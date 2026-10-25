@@ -1,0 +1,1279 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>麦麦主题雷达</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  :root{
+    --red:#da291c; --yellow:#ffc72c;
+    --ink:#1c1a17; --ink2:#615b53; --ink3:#8d857a;
+    --line:#e8e2d8; --bg:#f6f3ee; --card:#fff;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font-family:system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+       color:var(--ink);background:var(--bg);overflow:hidden;display:flex;flex-direction:column}
+
+  /* ---------- 顶栏 ---------- */
+  #top{height:56px;flex:0 0 56px;background:var(--red);color:#fff;display:flex;align-items:center;
+       gap:14px;padding:0 18px;z-index:900;box-shadow:0 2px 8px rgba(0,0,0,.16)}
+  .arch{width:34px;height:34px;border-radius:9px;background:var(--yellow);color:var(--red);
+        display:grid;place-items:center;font-weight:800;font-size:19px;letter-spacing:-1px;font-family:Georgia,serif}
+  #top h1{margin:0;font-size:16px;font-weight:600;letter-spacing:.4px;white-space:nowrap}
+  #top .sub{font-size:10.5px;opacity:.78;margin-top:1px;white-space:nowrap}
+  .citypick{display:flex;align-items:center;gap:8px;margin-left:8px;padding-left:16px;
+            border-left:1px solid rgba(255,255,255,.28)}
+  .citypick label{font-size:11px;opacity:.75}
+  #citySel{appearance:none;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.32);
+           color:#fff;font-size:14px;font-weight:600;padding:5px 28px 5px 11px;border-radius:9px;cursor:pointer;
+           background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='M0 0l5 6 5-6z' fill='%23ffffff'/></svg>");
+           background-repeat:no-repeat;background-position:right 10px center;outline:none}
+  #citySel option{color:#1c1a17}
+  #top .meta{margin-left:auto;display:flex;align-items:center;gap:10px}
+  #top .snapchip{font-size:11px;color:rgba(255,255,255,.82);white-space:nowrap}
+  #top .snapchip b{color:var(--yellow);font-weight:600}
+  .nearchip{display:none;align-items:center;gap:7px;background:var(--yellow);color:#4a3400;
+       border:none;border-radius:20px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;
+       box-shadow:0 2px 10px rgba(0,0,0,.2);white-space:nowrap;transition:.15s;font-family:inherit}
+  .nearchip.show{display:inline-flex}
+  .nearchip:hover{background:#ffd766;transform:translateY(-1px)}
+  .nearchip .pin{width:7px;height:7px;border-radius:50%;background:var(--red);flex:0 0 auto}
+  .nearchip .go{font-weight:400;opacity:.6;margin-left:-2px}
+
+  #app{flex:1;display:flex;min-height:0}
+
+  /* ---------- 侧栏 ---------- */
+  #side{width:392px;flex:0 0 392px;display:flex;flex-direction:column;background:var(--card);
+        border-right:1px solid var(--line);z-index:600;min-height:0}
+
+  .filters{padding:12px 16px 2px;border-bottom:1px solid var(--line);flex:0 0 auto}
+  .frow{display:flex;align-items:center;gap:8px;margin-bottom:9px}
+  .frow .fl{font-size:10.5px;font-weight:600;color:var(--ink3);width:52px;flex:0 0 52px;letter-spacing:.4px}
+  .fchips{display:flex;gap:5px;flex-wrap:wrap}
+  .fchip{font-size:11.5px;padding:3px 9px;border:1px solid var(--line);border-radius:14px;
+         background:#fff;color:var(--ink2);cursor:pointer;white-space:nowrap;transition:.12s}
+  .fchip:hover{border-color:#c9c0ae;color:var(--ink)}
+  .fchip.on{background:var(--red);border-color:var(--red);color:#fff}
+  .fnum{width:82px;padding:4px 8px;border:1px solid var(--line);border-radius:8px;font-size:12px;outline:none;background:#fdfcfa}
+  .fnum:focus{border-color:var(--red);background:#fff}
+  .funit{font-size:11px;color:var(--ink3)}
+  .fselect{flex:1;min-width:0;padding:4px 8px;border:1px solid var(--line);border-radius:8px;
+           font-size:12px;color:var(--ink);background:#fdfcfa;outline:none;font-family:inherit;
+           cursor:pointer;appearance:none;
+           background-image:linear-gradient(45deg,transparent 50%,#9a9184 50%),linear-gradient(135deg,#9a9184 50%,transparent 50%);
+           background-position:calc(100% - 13px) 52%,calc(100% - 9px) 52%;
+           background-size:4px 4px,4px 4px;background-repeat:no-repeat;padding-right:24px}
+  .fselect:focus{border-color:var(--red);background-color:#fff}
+  .ftext{flex:1;min-width:0;padding:4px 8px;border:1px solid var(--line);border-radius:8px;
+         font-size:12px;outline:none;background:#fdfcfa;font-family:inherit;color:var(--ink)}
+  .ftext:focus{border-color:var(--red);background:#fff}
+  .ftext::placeholder{color:#b3aa9c}
+
+  .listhead{padding:9px 16px 7px;display:flex;align-items:baseline;gap:6px;
+            border-bottom:1px solid #f3efe7;background:#fbf9f5;flex:0 0 auto}
+  .listhead b{font-size:12.5px}
+  .listhead span{font-size:11px;color:var(--ink3)}
+  .listhead .reset{margin-left:auto;font-size:11px;color:var(--red);cursor:pointer;text-decoration:underline dotted}
+  #slotHint{font-size:10.5px;color:var(--ink3);padding:5px 16px 6px;background:#fbf9f5;
+            border-bottom:1px solid #f3efe7;line-height:1.5}
+  #slotHint b{color:#1d7a4d;font-weight:500}
+
+  #themes{flex:1 1 auto;overflow-y:auto;min-height:0}
+  #themes::-webkit-scrollbar{width:6px}
+  #themes::-webkit-scrollbar-thumb{background:#ddd6c9;border-radius:3px}
+
+  .tcard{display:flex;gap:11px;padding:11px 16px;border-bottom:1px solid #f3efe7;cursor:pointer;
+         position:relative;transition:background .12s}
+  .tcard:hover{background:#fffaf0}
+  .tcard.sel{background:#fff5f3;box-shadow:inset 3px 0 0 var(--red)}
+  .timg{width:62px;height:62px;border-radius:9px;object-fit:cover;background:#f3efe7;flex:0 0 62px}
+  .tbody{flex:1;min-width:0}
+  .trow1{display:flex;align-items:baseline;gap:8px}
+  .ttitle{font-size:13px;font-weight:500;line-height:1.35;flex:1;
+          display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+  .tprice{font-size:13.5px;font-weight:600;color:var(--red);white-space:nowrap}
+  .tprice i{font-style:normal;font-size:10px;font-weight:400;color:var(--ink3)}
+  .tmeta{margin-top:4px;font-size:11px;color:var(--ink2);line-height:1.55}
+  .tmeta span{white-space:nowrap}
+  .tmeta .dot{color:#d5cec1;margin:0 4px}
+  .tfoot{margin-top:6px;display:flex;align-items:center;gap:8px}
+  .tcount{font-size:10.5px;color:#7a5a00;background:#fff4d6;border-radius:5px;padding:1px 6px}
+  .tdate{font-size:10.5px;color:#1d7a4d;background:#eaf7ef;border-radius:5px;padding:1px 6px;white-space:nowrap}
+  .tbtn{margin-left:auto;font-size:11px;padding:3px 9px;border:1px solid var(--line);border-radius:7px;
+        background:#fff;color:var(--ink2);cursor:pointer;white-space:nowrap}
+  .tbtn:hover{border-color:var(--red);color:var(--red)}
+  .empty{padding:30px 18px;text-align:center;color:var(--ink2);font-size:12.5px;line-height:1.8}
+
+  /* ---------- 主题 → 门店 二级列表 ---------- */
+  #storeView{display:none;flex-direction:column;flex:1 1 auto;min-height:0}
+  .svhead{display:flex;gap:10px;align-items:center;padding:11px 14px;border-bottom:1px solid var(--line);
+          background:#fff8f6;flex:0 0 auto}
+  .svback{width:26px;height:26px;border-radius:8px;border:1px solid var(--line);background:#fff;
+          color:var(--ink2);font-size:16px;line-height:1;cursor:pointer;flex:0 0 auto;padding:0 0 3px}
+  .svback:hover{border-color:var(--red);color:var(--red)}
+  .svhead img{width:44px;height:44px;border-radius:8px;object-fit:cover;background:#f3efe7;flex:0 0 44px}
+  .svinfo{min-width:0;flex:1}
+  .svname{font-size:13px;font-weight:600;line-height:1.35;margin-bottom:2px;
+          overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .svmeta{font-size:10.5px;color:var(--ink3);line-height:1.5}
+  .svdetail{flex:0 0 auto;font-size:11px;padding:5px 9px;border:1px solid var(--line);border-radius:7px;
+            background:#fff;color:var(--ink2);cursor:pointer;white-space:nowrap;transition:.12s}
+  .svdetail:hover{border-color:var(--red);color:var(--red)}
+  .svlist{flex:1 1 auto;overflow-y:auto;min-height:0}
+  .svlist::-webkit-scrollbar{width:6px}
+  .svlist::-webkit-scrollbar-thumb{background:#ddd6c9;border-radius:3px}
+  .svrow{display:flex;gap:10px;align-items:flex-start;padding:10px 16px;border-bottom:1px solid #f3efe7;
+         cursor:pointer;transition:background .12s}
+  .svrow:hover{background:#fffaf0}
+  .svrow.sel{background:#fff5f3;box-shadow:inset 3px 0 0 var(--red)}
+  .svrow.sel .idx{color:var(--red);font-weight:600}
+  .svrow.sel .sgoto{color:var(--red);font-weight:600}
+  .svrow .idx{width:18px;flex:0 0 18px;font-size:10.5px;color:var(--ink3);text-align:right;padding-top:2px}
+  .svrow .sbody{min-width:0;flex:1}
+  .svrow .snm{font-size:12.5px;font-weight:500;line-height:1.35;margin-bottom:2px}
+  .svrow .sad{font-size:11px;color:var(--ink2);line-height:1.45;
+              overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .svrow .sft{margin-top:4px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  .svrow .sdist{font-size:10.5px;color:var(--red);font-weight:500}
+  .svrow .sdate{font-size:10.5px;color:#1d7a4d;background:#eaf7ef;border-radius:5px;padding:1px 6px}
+  .svrow .snav{font-size:10.5px;color:var(--red);text-decoration:none;margin-left:auto;
+               border-bottom:1px dotted rgba(218,41,28,.45);padding-bottom:1px}
+  .svrow .snav:hover{border-bottom-style:solid}
+  .svrow .sgoto{font-size:10.5px;color:var(--ink3);margin-left:2px}
+  .svrow:hover .sgoto{color:var(--red)}
+
+  /* ---------- 详情浮卡 ---------- */
+  #detail{position:fixed;width:404px;max-height:84vh;background:#fff;border:1px solid var(--line);
+          border-radius:14px;box-shadow:0 16px 46px rgba(0,0,0,.22);z-index:950;display:none;
+          flex-direction:column;overflow:hidden}
+  #detail.on{display:flex}
+  .dtop{display:flex;gap:12px;padding:13px 14px 12px;border-bottom:1px solid #f3efe7;align-items:center}
+  .dtop img{width:62px;height:62px;border-radius:10px;object-fit:cover;background:#f3efe7;flex:0 0 62px;
+            cursor:zoom-in;transition:.15s}
+  .dtop img:hover{filter:brightness(1.06);transform:scale(1.04)}
+  .dt{flex:1;min-width:0}
+  .dt h3{margin:0;font-size:14px;font-weight:600;line-height:1.45}
+
+  /* 图片放大 */
+  #imgbox{position:fixed;inset:0;z-index:1200;display:none;align-items:center;justify-content:center;
+          background:rgba(20,18,15,.78);backdrop-filter:blur(2px);cursor:zoom-out}
+  #imgbox.on{display:flex}
+  /* 官方图源多为 360×438，放大到 520 以内还能看，再大就开始糊 */
+  #imgbox img{width:min(86vw,520px);max-height:84vh;object-fit:contain;border-radius:14px;
+              background:#fff;box-shadow:0 24px 70px rgba(0,0,0,.5);cursor:default}
+  #imgbox .ibclose{position:absolute;top:22px;right:26px;width:36px;height:36px;border:none;
+                   border-radius:50%;background:rgba(255,255,255,.92);color:#2b2622;font-size:20px;
+                   line-height:1;cursor:pointer}
+  #imgbox .ibclose:hover{background:#fff;color:var(--red)}
+  .dclose{background:none;border:none;font-size:18px;line-height:1;color:var(--ink3);cursor:pointer;padding:0 2px}
+  .dclose:hover{color:var(--ink)}
+  .dtabs{display:flex;gap:4px;padding:8px 14px 0;border-bottom:1px solid #f3efe7;background:#fff}
+  .dtab{border:none;background:none;font-size:12px;color:var(--ink3);padding:5px 11px;cursor:pointer;
+        border-bottom:2px solid transparent;border-radius:8px 8px 0 0;font-family:inherit}
+  .dtab:hover{color:var(--ink)}
+  .dtab.on{color:var(--red);font-weight:600;border-bottom-color:var(--red);background:#fff8f6}
+  .dbody{padding:12px 14px 14px;overflow-y:auto;font-size:12px;line-height:1.75;color:#4b463f}
+  .dfull{display:none;white-space:pre-wrap}
+  .dfull.on{display:block}
+  .facts{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:11px}
+  .facts span{display:inline-flex;align-items:center;gap:5px;background:#faf7f1;border:1px solid #efe9df;
+              border-radius:8px;padding:3px 8px;font-size:11.5px;color:var(--ink);line-height:1.5}
+  .facts i{font-style:normal;font-size:10px;color:var(--ink3)}
+  .facts span.hi{background:#fffaf0;border-color:#f3e2b4}
+  .facts span.hi i{color:#a06400}
+  .sell{margin:0 0 12px;font-size:12px;color:#4b463f;line-height:1.7;background:#fffaf0;
+        border-left:3px solid var(--yellow);padding:7px 10px;border-radius:0 7px 7px 0}
+  .tiny{font-size:10.5px;color:var(--ink3);line-height:1.6;margin:9px 0 0}
+
+  /* —— 重点：套餐 / 赠品 / 预约 —— */
+  .blk{margin-bottom:15px}
+  .blk:last-of-type{margin-bottom:2px}
+  .bh{display:flex;align-items:center;gap:7px;margin-bottom:8px}
+  .bic{width:19px;height:19px;border-radius:6px;flex:0 0 19px;display:flex;align-items:center;
+       justify-content:center;font-size:11px;font-weight:700;color:#fff}
+  .bic.c1{background:var(--red)}
+  .bic.c2{background:var(--yellow);color:#5c4400}
+  .bic.c3{background:#2f7d5d}
+  .bh b{font-size:12.5px;font-weight:600;color:var(--ink)}
+  .bh em{font-style:normal;font-size:10.5px;color:var(--ink3)}
+  .rawbtn{margin-left:auto;border:1px solid var(--line);background:#fff;color:var(--ink3);font-size:10px;
+          border-radius:7px;padding:2px 8px;cursor:pointer;font-family:inherit;transition:.12s}
+  .rawbtn:hover{color:var(--red);border-color:#f0bdb6}
+
+  .meal{border:1px solid #efe9df;border-radius:11px;overflow:hidden;margin-bottom:8px;background:#fffdf9}
+  .meal:last-child{margin-bottom:0}
+  .mh{display:flex;align-items:center;gap:6px;padding:7px 10px;background:#faf6ee;border-bottom:1px solid #f1ebdf}
+  .mh b{font-size:12px;color:var(--ink);font-weight:600}
+  .mq{font-size:10px;color:#8a5a00;background:#ffeec9;border-radius:5px;padding:1px 6px}
+  .mq.pick{color:#9a3a00;background:#ffe3d6}
+  .mrow{display:flex;gap:8px;padding:7px 10px;border-top:1px dashed #f2ece1;align-items:flex-start}
+  .mrow.first{border-top:none}
+  .ml{flex:0 0 54px;font-size:11px;font-weight:600;color:var(--ink2);line-height:1.85}
+  .ml i{display:block;font-style:normal;font-weight:400;font-size:9.5px;color:var(--ink3)}
+  .mo{display:flex;flex-wrap:wrap;gap:5px;min-width:0}
+  .mchip{background:#fff;border:1px solid #e9e2d5;border-radius:7px;padding:2px 7px;
+         font-size:11.5px;color:#3d3833;line-height:1.55;overflow-wrap:anywhere}
+  .mchip.none{color:#a49b8c;border-style:dashed}
+  .mgrp{display:inline-flex;align-items:center;gap:4px;flex-wrap:wrap;background:#fffaf0;
+        border:1px dashed #efd9a8;border-radius:9px;padding:2px 5px}
+  .mgrp em{font-style:normal;font-size:10px;color:#a67c00}
+
+  .gifts{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+  .gf{border:1px solid #efe9df;border-radius:10px;padding:7px 9px;background:#fffdf9;min-width:0}
+  .gft{display:flex;align-items:baseline;gap:5px}
+  .gft b{font-size:11.5px;font-weight:600;color:var(--ink);overflow-wrap:anywhere}
+  .gfq{flex:0 0 auto;font-size:10px;font-weight:600;color:var(--red);background:#ffeae6;
+       border-radius:4px;padding:0 4px}
+  .gfm{font-size:10px;color:var(--ink3);line-height:1.55;margin-top:2px;overflow-wrap:anywhere}
+  .gfsub{margin:4px 0 0;padding:0;list-style:none}
+  .gfsub li{font-size:10px;color:var(--ink2);line-height:1.6;overflow-wrap:anywhere}
+  .gfsub li::before{content:"· ";color:var(--ink3)}
+
+  .bks{display:flex;flex-direction:column;gap:6px}
+  .bk{display:flex;gap:7px;align-items:flex-start;background:#f7faf8;border:1px solid #e6efe9;
+      border-radius:9px;padding:6px 9px}
+  .bkt{flex:0 0 auto;font-size:10px;font-weight:600;color:#256a4e;background:#dff0e6;
+       border-radius:5px;padding:1px 6px;margin-top:1px}
+  .bkp{margin:0;font-size:11.5px;line-height:1.7;color:#41403c;overflow-wrap:anywhere}
+
+  .rawbox{margin:6px 0 0;padding:8px 10px;background:#fbf9f5;border:1px dashed var(--line);
+          border-radius:8px;font-size:10.5px;line-height:1.7;color:var(--ink2);
+          white-space:pre-wrap;overflow-wrap:anywhere}
+  .dbody::-webkit-scrollbar{width:5px}
+  .dbody::-webkit-scrollbar-thumb{background:#ddd6c9;border-radius:3px}
+
+  /* ---------- 地图 ---------- */
+  #map{flex:1;position:relative;background:#e9e6df;min-width:0}
+  #hud{position:absolute;top:12px;right:12px;z-index:500;display:flex;gap:4px;align-items:center;
+       background:rgba(255,255,255,.96);padding:5px;border-radius:11px;border:1px solid var(--line);
+       box-shadow:0 2px 10px rgba(0,0,0,.1)}
+  .hud-btn{background:transparent;border:none;border-radius:8px;padding:6px 10px;font-size:12px;
+           cursor:pointer;color:var(--ink2);white-space:nowrap;transition:.13s}
+  .hud-btn:hover{background:#f3efe7;color:var(--ink)}
+  .hud-btn.on{background:var(--ink);color:#fff}
+  .hud-btn.loc{color:var(--red)}
+  .hud-btn.loc.active{background:var(--red);color:#fff}
+  .hud-sep{width:1px;height:15px;background:var(--line)}
+  .hud-btn.zoom{width:26px;height:26px;padding:0;display:flex;align-items:center;justify-content:center;
+                font-size:16px;line-height:1;border-radius:8px;margin-left:-1px}
+
+  #legend{position:absolute;bottom:24px;right:12px;z-index:500;background:rgba(255,255,255,.95);
+          border:1px solid var(--line);border-radius:11px;padding:8px 11px;font-size:11px;
+          color:var(--ink2);line-height:1.85;box-shadow:0 2px 8px rgba(0,0,0,.08)}
+  #legend .hd{font-weight:600;color:var(--ink);margin-bottom:2px;font-size:10px}
+
+  #toast{position:absolute;left:50%;bottom:26px;transform:translateX(-50%) translateY(10px);
+         background:rgba(28,26,23,.92);color:#fff;font-size:12px;padding:8px 14px;border-radius:20px;
+         opacity:0;pointer-events:none;transition:.25s;z-index:700;max-width:80%}
+  #toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+
+  .me-dot{position:relative;width:16px;height:16px;border-radius:50%;background:#1a73e8;border:3px solid #fff;
+          box-shadow:0 1px 6px rgba(26,115,232,.55)}
+  .me-dot::after{content:'';position:absolute;inset:-9px;border-radius:50%;border:2px solid rgba(26,115,232,.45);
+          animation:pulse 2s infinite}
+  @keyframes pulse{0%{transform:scale(.6);opacity:.9}100%{transform:scale(1.5);opacity:0}}
+
+  .leaflet-popup-content-wrapper{border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.16)}
+  .leaflet-popup-content{margin:13px 16px;font-size:12.5px;line-height:1.6;width:302px!important}
+  .leaflet-popup-scrolled{border-bottom:none!important;border-top:none!important;overflow-x:hidden!important}
+  .leaflet-popup-scrolled::-webkit-scrollbar{width:5px}
+  .leaflet-popup-scrolled::-webkit-scrollbar-thumb{background:#ddd6c9;border-radius:3px}
+  .pop .plist{max-height:188px;overflow-y:auto;overflow-x:hidden;padding-right:2px}
+  .pop .plist::-webkit-scrollbar{width:5px}
+  .pop .plist::-webkit-scrollbar-thumb{background:#ddd6c9;border-radius:3px}
+  .pop h3{margin:0 0 3px;font-size:13.5px;font-weight:600;overflow-wrap:anywhere}
+  .pop .meta{color:var(--ink2);font-size:11px;margin-bottom:8px;line-height:1.6;overflow-wrap:anywhere}
+  .pop .meta b{color:var(--red)}
+  .pop .nav{display:flex;gap:12px;margin:5px 0 9px;font-size:11px}
+  .pop .nav a{color:var(--red);text-decoration:none;border-bottom:1px dotted rgba(218,41,28,.45);
+              padding-bottom:1px}
+  .pop .nav a:hover{border-bottom-style:solid}
+  .pop .hd{font-size:10.5px;color:var(--ink3);margin:2px 0 5px}
+  .pop .sp{display:flex;gap:8px;align-items:center;padding:6px 5px;border-top:1px solid #f5f1e9;
+           cursor:pointer;border-radius:7px;margin:0;transition:background .12s}
+  .pop .sp:hover{background:#fff6f3}
+  .pop .sp .chev{color:#cfc7ba;font-size:13px;line-height:1}
+  .pop .sp:first-of-type{border-top:none}
+  .pop .sp img{width:34px;height:34px;border-radius:6px;object-fit:cover;background:#f3efe7;flex:0 0 34px}
+  .pop .sp .sn{font-size:11.5px;line-height:1.35;overflow-wrap:anywhere}
+  .pop .sp .snb{min-width:0;flex:1}
+  .pop .sp .sm{font-size:10px;color:var(--ink3)}
+  .pop .sp .sp2{margin-left:auto;font-size:11.5px;color:var(--red);font-weight:500;white-space:nowrap}
+  .pop .foot{font-size:10px;color:var(--ink3);border-top:1px dashed var(--line);padding-top:6px;margin-top:7px}
+
+  /* 日期与场次 */
+  .pop .sect{border-top:1px solid #f3efe7;padding-top:8px;margin-top:8px}
+  .pop .sect .hd{display:flex;justify-content:space-between;align-items:baseline}
+  .pop .sect .hd em{font-style:normal;font-size:10px;color:var(--ink3)}
+  .dates{display:flex;gap:4px;flex-wrap:wrap;margin:5px 0 6px}
+  .dchip{font-size:10.5px;padding:3px 7px;border:1px solid var(--line);border-radius:7px;
+         background:#fff;color:var(--ink2);cursor:pointer;white-space:nowrap}
+  .dchip:hover{border-color:#c9c0ae}
+  .dchip.on{background:var(--red);border-color:var(--red);color:#fff}
+  .dchip.empty{opacity:.45;text-decoration:line-through}
+  .slot{display:flex;align-items:center;gap:8px;font-size:11.5px;padding:4px 0}
+  .slot .tm{font-weight:500;min-width:82px}
+  .slot .pp{color:var(--ink3);font-size:10.5px}
+  .slot .lf{margin-left:auto;font-size:10.5px;padding:1px 6px;border-radius:5px;
+            background:#eaf7ef;color:#1d7a4d;white-space:nowrap}
+  .slot .lf.low{background:#fdecea;color:#b3261e}
+  .noslot{font-size:11px;color:var(--ink3);padding:4px 0}
+
+  .clab{background:rgba(255,255,255,.97);border:1px solid #e2ddd3;border-radius:8px;
+        padding:3px 8px;font-size:11.5px;line-height:1.3;white-space:nowrap;font-weight:500;
+        box-shadow:0 1px 5px rgba(0,0,0,.12);color:var(--ink);display:inline-block}
+  .clab b{color:var(--red);font-weight:600;margin-left:4px}
+  .leaflet-div-icon.plain{background:transparent;border:none}
+  .cnum{background:transparent;border:none;box-shadow:none;padding:0;color:var(--red);
+        font-weight:600;font-size:12px;text-shadow:0 0 3px rgba(255,255,255,.9)}
+  .leaflet-tooltip.cnum::before{display:none}
+
+  @media (max-width:860px){
+    #app{flex-direction:column}
+    #side{width:100%;flex:0 0 auto;max-height:52vh;border-right:none;border-bottom:1px solid var(--line)}
+    #detail{width:min(404px,94vw)}
+    #top .meta{display:none}
+  }
+</style>
+</head>
+<body>
+<header id="top">
+  <div class="arch">M</div>
+  <div>
+    <h1>麦麦主题雷达</h1>
+    <div class="sub">McDonald's Theme Radar</div>
+  </div>
+  <div class="citypick">
+    <label>城市</label>
+    <select id="citySel"></select>
+  </div>
+  <div class="meta">
+    <span class="snapchip">数据快照 <b id="snap">—</b></span>
+    <button class="nearchip" id="nearBtn" title="定位到最近的门店">
+      <span class="pin"></span><span id="nearText"></span><span class="go">›</span>
+    </button>
+  </div>
+</header>
+
+<div id="app">
+  <aside id="side">
+    <div class="filters">
+      <div class="frow">
+        <div class="fl">人均价格</div>
+        <div class="fchips" id="priceChips">
+          <div class="fchip on" data-price="all">不限</div>
+          <div class="fchip" data-price="0-60">≤60</div>
+          <div class="fchip" data-price="60-100">61–100</div>
+          <div class="fchip" data-price="100-999">100 以上</div>
+        </div>
+      </div>
+      <div class="frow">
+        <div class="fl">年龄</div>
+        <input id="age" class="fnum" type="number" min="1" max="14" placeholder="孩子年龄" />
+        <span class="funit">岁</span>
+      </div>
+      <div class="frow">
+        <div class="fl">人数</div>
+        <input id="people" class="fnum" type="number" min="1" max="60" placeholder="参加人数" />
+        <span class="funit">人</span>
+      </div>
+      <div class="frow">
+        <div class="fl">时长</div>
+        <div class="fchips" id="durChips">
+          <div class="fchip on" data-dur="all">不限</div>
+          <div class="fchip" data-dur="0-1">≤1 小时</div>
+          <div class="fchip" data-dur="1-1.5">1.5 小时</div>
+          <div class="fchip" data-dur="1.5-9">2 小时以上</div>
+        </div>
+      </div>
+      <div class="frow">
+        <div class="fl">成团</div>
+        <div class="fchips" id="typeChips">
+          <div class="fchip on" data-type="all">不限</div>
+          <div class="fchip" data-type="1">包场</div>
+          <div class="fchip" data-type="2">拼团</div>
+        </div>
+      </div>
+      <div class="frow">
+        <div class="fl">类型</div>
+        <select id="catSel" class="fselect"><option value="all">全部类型</option></select>
+      </div>
+      <div class="frow">
+        <div class="fl">关键词</div>
+        <input id="kw" class="ftext" type="search" placeholder="搜索主题活动名称" />
+      </div>
+    </div>
+
+    <div class="listhead">
+      <b>主题活动</b><span id="themeCount"></span>
+      <span class="reset" id="reset">重置筛选</span>
+    </div>
+    <div id="slotHint"></div>
+    <div id="themes"></div>
+
+    <div id="storeView">
+      <div class="svhead">
+        <button class="svback" id="svBack" title="返回主题活动">‹</button>
+        <img id="svImg" alt="">
+        <div class="svinfo">
+          <div class="svname" id="svName"></div>
+          <div class="svmeta" id="svMeta"></div>
+        </div>
+        <button class="svdetail" id="svDetail">活动内容</button>
+      </div>
+      <div class="svlist" id="svList"></div>
+    </div>
+  </aside>
+
+  <main id="map">
+    <div id="hud">
+      <button class="hud-btn on" data-base="amap">路网</button>
+      <button class="hud-btn" data-base="sat">卫星</button>
+      <span class="hud-sep"></span>
+      <button class="hud-btn loc" id="locBtn">⌖ 我的位置</button>
+      <button class="hud-btn" id="fit">看全市</button>
+      <span class="hud-sep"></span>
+      <button class="hud-btn zoom" id="zoomOut" title="缩小" aria-label="缩小">−</button>
+      <button class="hud-btn zoom" id="zoomIn" title="放大" aria-label="放大">+</button>
+    </div>
+    <div id="legend">
+      <div class="hd" id="legendHd">门店举办主题活动数</div>
+      <div>颜色越深 = 活动越丰富</div>
+    </div>
+    <div id="toast"></div>
+  </main>
+</div>
+
+<div id="detail">
+  <div class="dtop">
+    <img id="dImg" alt="" title="点击查看大图">
+    <div class="dt">
+      <h3 id="dName"></h3>
+    </div>
+    <button class="dclose" id="dClose">×</button>
+  </div>
+  <div class="dtabs">
+    <button class="dtab on" data-tab="hl">重点</button>
+    <button class="dtab" data-tab="full">详细原文</button>
+  </div>
+  <div class="dbody" id="dHl"></div>
+  <div class="dbody dfull" id="dFull"></div>
+</div>
+
+<div id="imgbox">
+  <img id="imgbig" alt="">
+  <button class="ibclose" id="ibClose">×</button>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const DATA = __DATA__;
+const META = __META__;
+const SLOTS = __SLOTS__;
+
+/* ---------- WGS-84 → GCJ-02 ---------- */
+const PI = Math.PI, AXIS = 6378245.0, EE = 0.00669342162296594323;
+const outOfChina = (lng, lat) => !(lng > 73.66 && lng < 135.05 && lat > 3.86 && lat < 53.55);
+function tLat(x, y){
+  let r = -100 + 2*x + 3*y + 0.2*y*y + 0.1*x*y + 0.2*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*PI) + 20*Math.sin(2*x*PI)) * 2/3;
+  r += (20*Math.sin(y*PI) + 40*Math.sin(y/3*PI)) * 2/3;
+  r += (160*Math.sin(y/12*PI) + 320*Math.sin(y*PI/30)) * 2/3;
+  return r;
+}
+function tLng(x, y){
+  let r = 300 + x + 2*y + 0.1*x*x + 0.1*x*y + 0.1*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*PI) + 20*Math.sin(2*x*PI)) * 2/3;
+  r += (20*Math.sin(x*PI) + 40*Math.sin(x/3*PI)) * 2/3;
+  r += (150*Math.sin(x/12*PI) + 300*Math.sin(x/30*PI)) * 2/3;
+  return r;
+}
+function wgs2gcj(lng, lat){
+  if (outOfChina(lng, lat)) return [lng, lat];
+  let dLat = tLat(lng - 105, lat - 35), dLng = tLng(lng - 105, lat - 35);
+  const rad = lat / 180 * PI;
+  let magic = Math.sin(rad); magic = 1 - EE * magic * magic;
+  const sm = Math.sqrt(magic);
+  dLat = (dLat * 180) / ((AXIS * (1 - EE)) / (magic * sm) * PI);
+  dLng = (dLng * 180) / ((AXIS / sm) * Math.cos(rad) * PI);
+  return [lng + dLng, lat + dLat];
+}
+function haversine(a, b){
+  const R = 6371000, p = PI / 180;
+  const dLat = (b[0] - a[0]) * p, dLng = (b[1] - a[1]) * p;
+  const h = Math.sin(dLat/2)**2 + Math.cos(a[0]*p) * Math.cos(b[0]*p) * Math.sin(dLng/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+const fmtDist = m => m < 1000 ? Math.round(m) + ' m' : (m/1000).toFixed(1) + ' km';
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+
+/* ---------- 数据字典 ---------- */
+const SPU = Object.fromEntries(META.spus.map(s => [s.spu_id, s]));
+const CITY_NAME = Object.fromEntries(META.cities.map(c => [c.code, c.name]));
+const priceOf = id => (SPU[id] || {}).price ?? 0;
+const rangeH = id => ((SPU[id] || {}).range || 0) * 0.5;
+const parseRange = str => {
+  const m = String(str || '').match(/(\d+)\s*[-~至]\s*(\d+)/);
+  return m ? [+m[1], +m[2]] : null;
+};
+const fmtType = t => t === 1 ? '包场' : t === 2 ? '拼团' : t === -1 ? '包场/拼团' : '—';
+
+/* ---------- 状态 ---------- */
+const cities = [...new Set(DATA.map(s => s.city))];
+const S = {
+  city: cities.includes('440100') ? '440100' : cities[0],
+  spu: 0,                 // 正在看门店列表的主题
+  sel: 0,                 // 主题列表里被选中的主题（高亮 + 弹卡）
+  store: null,            // 门店列表里被选中的门店（地图上高亮）
+  price: 'all', dur: 'all', type: 'all', cat: 'all', kw: '', age: 0, people: 0,
+  base: 'amap', loc: null
+};
+
+/* ---------- 地图 ---------- */
+const BASES = {
+  amap: () => L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}', {
+    subdomains: '1234', maxZoom: 18, attribution: '高德地图'
+  }),
+  sat: () => L.tileLayer('https://webst0{s}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}', {
+    subdomains: '1234', maxZoom: 18, attribution: '高德地图'
+  })
+};
+const map = L.map('map', { zoomControl: false, preferCanvas: true }).setView([23.13, 113.26], 11);
+map.attributionControl.setPrefix(false);
+let currentBase = BASES.amap().addTo(map);
+function switchBase(key){
+  if (S.base === key) return;
+  S.base = key;
+  map.removeLayer(currentBase);
+  currentBase = BASES[key]().addTo(map);
+  document.querySelectorAll('[data-base]').forEach(b => b.classList.toggle('on', b.dataset.base === key));
+}
+
+const layer = L.layerGroup().addTo(map);
+const markers = new Map();
+let meMarker = null;
+let gridCtx = null;
+
+/* ---------- 当前城市的门店 ---------- */
+function cityStores(){ return DATA.filter(s => s.city === S.city); }
+
+/* ---------- 可约日期与场次 ---------- */
+const hasSlotData = () => !!(SLOTS && SLOTS.slots && Object.keys(SLOTS.slots).length);
+const mdOf = d => d ? (+d.slice(5, 7)) + '月' + (+d.slice(8, 10)) + '日' : '';
+const wdOf = d => '日一二三四五六'[new Date(d + 'T00:00:00').getDay()];
+function datesFor(code, spu){
+  const m = SLOTS.dates_by_spu && SLOTS.dates_by_spu[String(spu)];
+  return (m && m[code]) || [];
+}
+function storeDates(code, spus){
+  const set = new Set();
+  spus.forEach(id => datesFor(code, id).forEach(d => set.add(d)));
+  return [...set].sort();
+}
+function slotsOf(code, date){ return ((SLOTS.slots || {})[code] || {})[date] || []; }
+function slotsHtml(code, date){
+  const list = slotsOf(code, date);
+  if (!list.length) return '<div class="noslot">当日暂无场次</div>';
+  return list.map(s => {
+    const low = s.left <= 3;
+    return `<div class="slot"><span class="tm">${s.s}–${s.e}</span>
+      <span class="pp">${s.min}–${s.max} 人</span>
+      <span class="lf${low ? ' low' : ''}">余 ${s.left}</span></div>`;
+  }).join('');
+}
+window.pickDate = (code, date, el) => {
+  el.parentNode.querySelectorAll('.dchip').forEach(x => x.classList.remove('on'));
+  el.classList.add('on');
+  const box = document.getElementById('slotBox');
+  if (box) box.innerHTML = slotsHtml(code, date);
+};
+
+/* ---------- 高德导航（URI API，无需 key，坐标即 GCJ-02） ---------- */
+function amapNav(s, mode){
+  const to = `${s.lng.toFixed(6)},${s.lat.toFixed(6)},${encodeURIComponent(s.short || s.name)}`;
+  const from = S.loc
+    ? `&from=${S.loc.lng.toFixed(6)},${S.loc.lat.toFixed(6)},${encodeURIComponent('我的位置')}`
+    : '';
+  return `https://uri.amap.com/navigation?to=${to}${from}&mode=${mode}&policy=1` +
+         `&src=mcd-theme-radar&coordinate=gaode&callnative=1`;
+}
+
+/* ---------- 门店弹窗 ---------- */
+function themeRowHtml(id){
+  const d = SPU[id] || {};
+  const m = [d.age ? d.age + ' 岁' : '', d.people ? d.people + ' 人' : '',
+             rangeH(id) ? rangeH(id) + ' 小时' : '', fmtType(d.ptype)].filter(Boolean).join(' · ');
+  return `<div class="sp" onclick="pickTheme(${id})">
+    ${d.img ? `<img src="${esc(d.img)}" loading="lazy" alt="">` : '<img alt="">'}
+    <div class="snb"><div class="sn">${esc(d.name || id)}</div><div class="sm">${esc(m)}</div></div>
+    <div class="sp2">¥${d.price ?? '—'}</div>
+    <span class="chev">›</span>
+  </div>`;
+}
+
+/* 门店弹窗里点某个活动 → 左侧联动到该主题 */
+window.pickTheme = id => {
+  map.closePopup();
+  goStores(id);
+};
+function storePopup(s){
+  const dist = S.loc ? haversine([S.loc.lat, S.loc.lng], [s.lat, s.lng]) : null;
+  const rows = s.spus.map(themeRowHtml).join('');
+
+  const dates = hasSlotData() ? storeDates(s.code, s.spus) : [];
+  const prices = s.spus.map(priceOf).filter(n => n > 0);
+  const pMin = prices.length ? Math.min(...prices) : null;
+  const firstWith = dates.find(d => slotsOf(s.code, d).length) || dates[0];
+  const slotSection = dates.length ? `
+    <div class="sect">
+      <div class="hd"><span>可预约日期</span><em>${pMin ? '¥' + pMin + ' 起' : ''}</em></div>
+      <div class="dates">${dates.map(d =>
+        `<span class="dchip${d === firstWith ? ' on' : ''}${slotsOf(s.code, d).length ? '' : ' empty'}"
+          onclick="pickDate('${s.code}','${d}',this)">${mdOf(d)} 周${wdOf(d)}</span>`
+      ).join('')}</div>
+      <div id="slotBox">${slotsHtml(s.code, firstWith)}</div>
+    </div>` : '';
+
+  return `<div class="pop">
+    <h3>${esc(s.short || s.name)}</h3>
+    <div class="meta">${esc(s.address)}<br>
+      ${s.biz === 1 ? '营业中' : '非营业'} · 门店 ${s.code}
+      ${dist != null ? ` · <b>距你 ${fmtDist(dist)}</b>` : ''}</div>
+    <div class="nav">
+      <a href="${amapNav(s, 'car')}" target="_blank" rel="noopener">驾车导航 ↗</a>
+      <a href="${amapNav(s, 'walk')}" target="_blank" rel="noopener">步行 ↗</a>
+      <a href="${amapNav(s, 'bus')}" target="_blank" rel="noopener">公交 ↗</a>
+    </div>
+    <div class="hd">举办主题 ${s.spus.length} 项</div>
+    <div class="plist">${rows}</div>
+    ${slotSection}
+    <div class="foot">场次快照 ${(SLOTS.generated_at || META.snapshot_at).replace('T', ' ').slice(0, 16)}，余位以官方渠道为准</div>
+  </div>`;
+}
+
+/* ---------- 画点 ---------- */
+function storeColor(n){ return n >= 16 ? '#a81c00' : n >= 9 ? '#d62300' : n >= 2 ? '#e8a33d' : '#c8bfae'; }
+
+function drawStores(list){
+  list.forEach(s => {
+    const m = L.circleMarker([s.lat, s.lng], {
+      radius: 4.6 + Math.min(s.spus.length, 18) * 0.42,
+      color: '#fff', weight: 1.4, fillColor: storeColor(s.spus.length), fillOpacity: .9
+    }).bindPopup(() => storePopup(s), { maxWidth: 340, maxHeight: 580 }).addTo(layer);
+    markers.set(s.code, m);
+  });
+}
+function drawGrid(list){
+  const z = map.getZoom(), CELL = 90;
+  const cells = new Map();
+  list.forEach(s => {
+    const p = map.project([s.lat, s.lng], z);
+    const k = Math.floor(p.x / CELL) + '_' + Math.floor(p.y / CELL);
+    const it = cells.get(k) || { n: 0, x: 0, y: 0, pts: [] };
+    it.n++; it.x += p.x; it.y += p.y; it.pts.push([s.lat, s.lng]);
+    cells.set(k, it);
+  });
+  cells.forEach(it => {
+    const ll = map.unproject(L.point(it.x / it.n, it.y / it.n), z);
+    if (it.n === 1){ return; }
+    const r = Math.min(23, 10 + Math.log2(it.n) * 2.6);
+    it.r = r;
+    L.circleMarker(ll, { radius: r + 3, stroke: false, fillColor: '#da291c', fillOpacity: .09,
+      interactive: false }).addTo(layer);
+    const c = L.circleMarker(ll, { radius: r, color: '#da291c', weight: 1.3, fillColor: '#fff', fillOpacity: .95 }).addTo(layer);
+    c.bindTooltip(String(it.n), { permanent: true, direction: 'center', className: 'cnum', opacity: 1 });
+    c.on('click', () => map.flyToBounds(L.latLngBounds(it.pts).pad(0.3), { duration: .5 }));
+  });
+  list.forEach(s => {
+    const p = map.project([s.lat, s.lng], z);
+    const k = Math.floor(p.x / CELL) + '_' + Math.floor(p.y / CELL);
+    if (cells.get(k).n === 1) drawStores([s]);
+  });
+  return { z, CELL, cells };
+}
+
+/* 最近门店：门店层画在原坐标，聚合层套在它所属的聚合点上 */
+function toLatLng(ll){ return Array.isArray(ll) ? [ll[0], ll[1]] : [ll.lat, ll.lng]; }
+
+function markNearest(list){
+  const btn = document.getElementById('nearBtn');
+  if (!list.length){ S.nearest = null; btn.classList.remove('show'); return; }
+  let best = null, bd = Infinity;
+  list.forEach(s => {
+    const d = haversine([S.loc.lat, S.loc.lng], [s.lat, s.lng]);
+    if (d < bd){ bd = d; best = s; }
+  });
+  if (!best) return;
+
+  let [lat, lng] = [best.lat, best.lng];
+  let r = 15;
+
+  if (gridCtx){
+    const p = map.project([best.lat, best.lng], gridCtx.z);
+    const key = Math.floor(p.x / gridCtx.CELL) + '_' + Math.floor(p.y / gridCtx.CELL);
+    const cell = gridCtx.cells.get(key);
+    if (cell){
+      [lat, lng] = toLatLng(map.unproject(L.point(cell.x / cell.n, cell.y / cell.n), gridCtx.z));
+      const cr = cell.n > 1 ? (cell.r || Math.min(23, 10 + Math.log2(cell.n) * 2.6)) : 5;
+      r = cr + 7;
+    }
+  }
+
+  L.circleMarker([lat, lng], {
+    radius: r, color: '#ffc72c', weight: 3, fill: false, opacity: .95,
+    interactive: false
+  }).addTo(layer);
+
+  S.nearest = best;
+  document.getElementById('nearText').textContent = `最近：${best.short || best.name} · ${fmtDist(bd)}`;
+  document.getElementById('nearBtn').classList.add('show');
+}
+
+function renderMap(){
+  layer.clearLayers();
+  markers.clear();
+  let list = cityStores();
+  if (S.spu) list = list.filter(s => s.spus.includes(S.spu));
+
+  if (map.getZoom() >= 11){ drawStores(list); gridCtx = null; }
+  else gridCtx = drawGrid(list);
+
+  if (S.loc){ drawMe(); markNearest(list); }
+  else { S.nearest = null; document.getElementById('nearBtn').classList.remove('show'); }
+
+  if (S.store && map.getZoom() >= 11) drawStoreFocus();
+}
+
+/* 门店列表里选中的那家：放大 + 红圈，让人一眼看到是哪个点 */
+function drawStoreFocus(){
+  const s = DATA.find(x => x.code === S.store);
+  if (!s) return;
+  const m = markers.get(s.code);
+  if (m && m.setStyle){
+    m.setStyle({ radius: 9, weight: 2.2, color: '#fff', fillColor: '#da291c', fillOpacity: 1 });
+    if (m.bringToFront) m.bringToFront();
+  }
+  L.circleMarker([s.lat, s.lng], {
+    radius: 17, color: '#da291c', weight: 2.4, fill: false, opacity: .9,
+    interactive: false
+  }).addTo(layer);
+}
+
+/* ---------- 定位 ---------- */
+function drawMe(){
+  if (meMarker) layer.removeLayer(meMarker);
+  const icon = L.divIcon({ className: 'plain', html: '<div class="me-dot"></div>', iconSize: [16,16], iconAnchor: [8,8] });
+  meMarker = L.marker([S.loc.lat, S.loc.lng], { icon, interactive: false, zIndexOffset: 900 }).addTo(layer);
+}
+function locate(silent){
+  if (!navigator.geolocation){ if (!silent) toast('当前浏览器不支持定位，请直接选择城市'); return; }
+  navigator.geolocation.getCurrentPosition(
+    p => {
+      const [lng, lat] = wgs2gcj(p.coords.longitude, p.coords.latitude);
+      S.loc = { lat, lng };
+      const btn = document.getElementById('locBtn');
+      btn.classList.add('active'); btn.textContent = '⌖ 回到位置';
+      map.flyTo([lat, lng], 12, { duration: .7 });
+      renderMap(); renderThemes();
+      toast('已定位，已标出最近的门店');
+    },
+    () => { if (!silent) toast('定位失败或未授权，请直接选择城市'); },
+    { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+  );
+}
+
+/* ---------- 主题筛选 ---------- */
+function themeHit(id){
+  const d = SPU[id] || {};
+  const p = priceOf(id);
+  if (S.cat !== 'all' && (d.cat || '') !== S.cat) return false;
+  if (S.kw && !(d.name || '').toLowerCase().includes(S.kw.toLowerCase())) return false;
+  if (S.price !== 'all'){
+    const [lo, hi] = S.price.split('-').map(Number);
+    if (!(p > lo && p <= hi)) return false;
+  }
+  if (S.age){
+    const r = parseRange(d.age);
+    if (r && !(S.age >= r[0] && S.age <= r[1])) return false;
+  }
+  if (S.people){
+    const r = parseRange(d.people);
+    if (r && !(S.people >= r[0] && S.people <= r[1])) return false;
+  }
+  if (S.dur !== 'all'){
+    const h = rangeH(id);
+    const [lo, hi] = S.dur.split('-').map(Number);
+    if (!(h > lo && h <= hi)) return false;
+  }
+  if (S.type !== 'all'){
+    const t = d.ptype;
+    if (t === 1 && S.type === '2') return false;
+    if (t === 2 && S.type === '1') return false;
+  }
+  return true;
+}
+
+/* ---------- 二级视图：主题 → 门店列表 ---------- */
+function setMode(mode){
+  const on = mode === 'stores';
+  document.querySelector('.filters').style.display = on ? 'none' : 'block';
+  document.querySelector('.listhead').style.display = on ? 'none' : 'flex';
+  document.getElementById('slotHint').style.display = on ? 'none' : 'block';
+  document.getElementById('themes').style.display = on ? 'none' : 'block';
+  document.getElementById('storeView').style.display = on ? 'flex' : 'none';
+}
+
+/* 点「查看门店」：进入该主题的门店列表，并选中第一项 */
+function goStores(id){
+  if (!cityStores().some(s => s.spus.includes(id))){
+    toast('本城暂无门店举办该主题活动');
+    return;
+  }
+  S.spu = id; S.sel = id; S.store = null; S.svFit = true;
+  document.getElementById('detail').classList.remove('on');
+  renderStoreView({ fly: true });
+  syncHash();
+}
+
+/* 选中门店：列表高亮 + 地图高亮 + 飞过去弹卡 */
+function selectStore(code, fly){
+  const s = DATA.find(x => x.code === code);
+  if (!s) return;
+  S.store = code;
+  document.querySelectorAll('.svrow').forEach(el => el.classList.toggle('sel', el.dataset.code === code));
+  if (!fly){ renderMap(); return; }
+
+  if (map.getZoom() < 14) map.flyTo([s.lat, s.lng], 15, { duration: .6 });
+  else map.panTo([s.lat, s.lng], { animate: true });
+  renderMap();
+  setTimeout(() => {
+    let m = markers.get(code);
+    if (!m){ drawStores([s]); m = markers.get(code); }
+    if (m) m.openPopup();
+  }, 640);
+}
+
+function renderStoreView(opts){
+  opts = opts || {};
+  const d = SPU[S.spu] || {};
+  document.getElementById('svImg').src = d.img || '';
+  document.getElementById('svName').textContent = d.name || S.spu;
+
+  const list = cityStores().filter(s => s.spus.includes(S.spu))
+    .map(s => ({ s, dist: S.loc ? haversine([S.loc.lat, S.loc.lng], [s.lat, s.lng]) : null }))
+    .sort((a, b) => S.loc ? a.dist - b.dist : b.s.spus.length - a.s.spus.length);
+
+  const metaBits = [d.price != null ? '¥' + d.price + '/人' : '',
+                    d.age ? d.age + ' 岁' : '', d.people ? d.people + ' 人' : '',
+                    fmtType(d.ptype), `${list.length} 家店在举办`].filter(Boolean);
+  document.getElementById('svMeta').textContent = metaBits.join(' · ');
+  document.getElementById('svDetail').onclick = e => openDetail(S.spu, e.currentTarget);
+
+  const box = document.getElementById('svList');
+  if (!list.length){
+    box.innerHTML = `<div class="empty">本城暂无门店举办该主题活动</div>`;
+    S.store = null;
+    setMode('stores');
+    return;
+  }
+
+  // 之前选中的店不在当前列表里（换主题/换城市）就退回第一项
+  if (!list.some(x => x.s.code === S.store)) S.store = list[0].s.code;
+
+  box.innerHTML = list.map(({ s, dist }, i) => {
+    const dt = hasSlotData() ? (datesFor(s.code, S.spu)[0] || '') : '';
+    return `<div class="svrow${S.store === s.code ? ' sel' : ''}" data-code="${s.code}">
+      <div class="idx">${i + 1}</div>
+      <div class="sbody">
+        <div class="snm">${esc(s.short || s.name)}</div>
+        <div class="sad">${esc(s.address)}</div>
+        <div class="sft">
+          ${dist != null ? `<span class="sdist">距你 ${fmtDist(dist)}</span>` : ''}
+          ${dt ? `<span class="sdate">最早 ${mdOf(dt)} 可约</span>` : ''}
+          <a class="snav" href="${amapNav(s, 'car')}" target="_blank" rel="noopener"
+             onclick="event.stopPropagation()">导航 ↗</a>
+          <span class="sgoto">定位 ›</span>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  box.querySelectorAll('.svrow').forEach(el => {
+    el.onclick = () => selectStore(el.dataset.code, true);
+  });
+
+  setMode('stores');
+
+  if (opts.fly){
+    selectStore(S.store, true);
+  } else {
+    if (!S.svFit){
+      const pts = list.map(x => [x.s.lat, x.s.lng]);
+      if (pts.length) map.fitBounds(L.latLngBounds(pts).pad(0.2), { maxZoom: 14 });
+      S.svFit = true;
+    }
+    renderMap();
+  }
+}
+
+/* 类型下拉：选项来自本城在售主题，带数量 */
+function buildCatSelect(ids){
+  const sel = document.getElementById('catSel');
+  const cats = {};
+  ids.forEach(id => { const c = (SPU[id] || {}).cat; if (c) cats[c] = (cats[c] || 0) + 1; });
+  if (S.cat !== 'all' && !cats[S.cat]) S.cat = 'all';
+  const keys = Object.keys(cats).sort((a, b) => cats[b] - cats[a]);
+  sel.innerHTML = `<option value="all">全部类型（${ids.length}）</option>` +
+    keys.map(c => `<option value="${esc(c)}"${c === S.cat ? ' selected' : ''}>${esc(c)}（${cats[c]}）</option>`).join('');
+  sel.onchange = () => { S.cat = sel.value; renderThemes(); syncHash(); };
+}
+
+function renderThemes(){
+  if (S.spu){ renderStoreView(); return; }
+  setMode('themes');
+  const box = document.getElementById('themes');
+  const stores = cityStores();
+  const cnt = {};
+  stores.forEach(s => s.spus.forEach(id => { cnt[id] = (cnt[id] || 0) + 1; }));
+
+  const all = Object.keys(cnt).map(Number);
+  buildCatSelect(all);
+  const list = all.filter(themeHit).sort((a, b) => cnt[b] - cnt[a]);
+
+  document.getElementById('themeCount').textContent = `· ${list.length} 项 / 共 ${all.length} 项`;
+
+  const hint = document.getElementById('slotHint');
+  const citySlotSpus = new Set();
+  Object.entries(SLOTS.dates_by_spu || {}).forEach(([spu, m]) => {
+    if (stores.some(st => m && m[st.code] && m[st.code].length)) citySlotSpus.add(+spu);
+  });
+  if (citySlotSpus.size){
+    const names = [...citySlotSpus].map(id => (SPU[id] || {}).name || id).join('、');
+    hint.innerHTML = `本城场次数据已接入：<b>${esc(names)}</b>（其余主题暂无场次数据）`;
+  } else {
+    hint.innerHTML = '本城场次数据未接入，运行 <code>fetch_slots.py</code> 后重新编译';
+  }
+
+  if (!list.length){
+    box.innerHTML = `<div class="empty">没有符合条件的主题活动<br>放宽价格、类型或关键词试试</div>`;
+    return;
+  }
+
+  box.innerHTML = list.map(id => {
+    const d = SPU[id] || {};
+    const meta = [
+      d.age ? d.age + ' 岁' : '',
+      d.people ? d.people + ' 人' : '',
+      rangeH(id) ? rangeH(id) + ' 小时' : '',
+      fmtType(d.ptype)
+    ].filter(Boolean).join('<span class="dot">·</span>');
+    let earliest = '';
+    if (hasSlotData()){
+      const ds = stores.filter(st => st.spus.includes(id))
+                       .flatMap(st => datesFor(st.code, id)).sort();
+      earliest = ds[0] || '';
+    }
+    return `<div class="tcard${S.sel === id ? ' sel' : ''}" data-spu="${id}">
+      ${d.img ? `<img class="timg" src="${esc(d.img)}" loading="lazy" alt="">` : '<div class="timg"></div>'}
+      <div class="tbody">
+        <div class="trow1">
+          <div class="ttitle">${esc(d.name || id)}</div>
+          <div class="tprice">¥${d.price ?? '—'}<i>/人</i></div>
+        </div>
+        <div class="tmeta"><span>${meta}</span></div>
+        <div class="tfoot">
+          <span class="tcount">${cnt[id]} 家店在举办</span>
+          ${earliest ? `<span class="tdate">最早 ${mdOf(earliest)} 可约</span>` : ''}
+          <button class="tbtn" data-go="${id}">查看门店</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // 点卡片 = 选中并弹出活动内容
+  box.querySelectorAll('.tcard').forEach(el => {
+    const id = +el.dataset.spu;
+    el.onclick = e => {
+      if (e.target.closest('[data-go]')) return;
+      S.sel = (S.sel === id) ? 0 : id;
+      box.querySelectorAll('.tcard').forEach(x => x.classList.toggle('sel', +x.dataset.spu === S.sel));
+      if (S.sel) openDetail(id, el);
+      else document.getElementById('detail').classList.remove('on');
+    };
+  });
+  box.querySelectorAll('[data-go]').forEach(btn => {
+    btn.onclick = e => { e.stopPropagation(); goStores(+btn.dataset.go); };
+  });
+}
+
+/* ---------- 详情浮卡 ---------- */
+function detailFacts(id){
+  const d = SPU[id] || {};
+  return [
+    d.cat && ['类型', d.cat],
+    d.age && ['适龄', d.age + ' 岁'],
+    d.people && ['人数', d.people + ' 人'],
+    rangeH(id) && ['时长', rangeH(id) + ' 小时'],
+    fmtType(d.ptype) && ['成团', fmtType(d.ptype)],
+    d.price != null && ['价格', '¥' + d.price + '/人']
+  ].filter(Boolean);
+}
+
+/* ---------- 重点：套餐 / 赠品 / 预约 ---------- */
+const itemHtml = it => it.g
+  ? `<span class="mgrp">${it.g.map(v => `<span class="mchip">${esc(v)}</span>`).join('<em>或</em>')}</span>`
+  : `<span class="mchip${/^不含/.test(it.t) ? ' none' : ''}">${esc(it.t)}</span>`;
+
+function mealsHtml(hl){
+  return (hl.meals || []).map(m => {
+    const rows = (m.parts || []).map((p, i) => {
+      const q = [p.qty, p.pick].filter(Boolean).join(' · ');
+      return `<div class="mrow${i === 0 ? ' first' : ''}">
+        <span class="ml">${esc(p.label || '含')}${q ? `<i>${esc(q)}</i>` : ''}</span>
+        <span class="mo">${(p.items || []).map(itemHtml).join('')}</span>
+      </div>`;
+    }).join('');
+    return `<div class="meal"><div class="mh"><b>${esc(m.name)}</b></div>${rows}</div>`;
+  }).join('');
+}
+
+function giftsHtml(hl){
+  return (hl.gifts || []).map(g => {
+    const meta = [g.spec, g.rand].filter(Boolean).join(' · ');
+    const sub = (g.sub || []).length
+      ? `<ul class="gfsub">${g.sub.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : '';
+    return `<div class="gf">
+      <div class="gft"><b>${esc(g.name)}</b>${g.qty ? `<span class="gfq">${esc(g.qty)}</span>` : ''}</div>
+      ${meta ? `<div class="gfm">${esc(meta)}</div>` : ''}${sub}
+    </div>`;
+  }).join('');
+}
+
+function bookHtml(hl){
+  return (hl.booking || []).map(b =>
+    `<div class="bk"><span class="bkt">${esc(b.tag)}</span><p class="bkp">${esc(b.t)}</p></div>`).join('');
+}
+
+function blkHtml(cls, glyph, title, note, body, raw, key){
+  return `<section class="blk">
+    <div class="bh"><span class="bic ${cls}">${glyph}</span><b>${title}</b>
+      ${note ? `<em>${esc(note)}</em>` : ''}
+      ${raw ? `<button class="rawbtn" data-raw="${key}">原文</button>` : ''}</div>
+    ${body}
+    ${raw ? `<pre class="rawbox" data-box="${key}" hidden>${esc(raw)}</pre>` : ''}
+  </section>`;
+}
+
+function renderDetail(id){
+  const d = SPU[id] || {};
+  const hl = d.hl || {};
+  const meals = mealsHtml(hl), gifts = giftsHtml(hl), books = bookHtml(hl);
+
+  const facts = detailFacts(id)
+    .map(([k, v]) => `<span${k === '价格' ? ' class="hi"' : ''}><i>${esc(k)}</i>${esc(v)}</span>`).join('');
+
+  let html = `<div class="facts">${facts}</div>`;
+  html += d.selling ? `<p class="sell">${esc(d.selling)}</p>` : '';
+  html += blkHtml('c1', '餐', '套餐',
+    (hl.meals || []).length > 1 ? `${hl.meals.length} 组` : '',
+    meals || '<p class="tiny">官方须知未单列套餐内容，可查看「详细原文」。</p>',
+    hl.meal_raw, 'meal');
+  html += blkHtml('c2', '礼', '赠品',
+    (hl.gifts || []).length ? `${hl.gifts.length} 件` : '',
+    gifts || '<p class="tiny">官方须知未单列赠品，可查看「详细原文」。</p>',
+    hl.gift_raw, 'gift');
+  html += blkHtml('c3', '约', '预约', '', 
+    books || '<p class="tiny">官方须知未单列预约规则，可查看「详细原文」。</p>', '', '');
+
+  document.getElementById('dHl').innerHTML = html;
+
+  document.getElementById('dFull').textContent = d.note || '暂无原文';
+  switchTab('hl');
+}
+
+function switchTab(which){
+  document.querySelectorAll('.dtab').forEach(b => b.classList.toggle('on', b.dataset.tab === which));
+  document.getElementById('dHl').style.display = which === 'hl' ? 'block' : 'none';
+  document.getElementById('dFull').classList.toggle('on', which === 'full');
+}
+
+document.querySelectorAll('.dtab').forEach(btn => {
+  btn.onclick = () => switchTab(btn.dataset.tab);
+});
+
+// 「原文」按钮：展开该块的官方原文
+document.getElementById('dHl').addEventListener('click', e => {
+  const btn = e.target.closest('.rawbtn');
+  if (!btn) return;
+  const box = document.querySelector(`.rawbox[data-box="${btn.dataset.raw}"]`);
+  if (!box) return;
+  box.hidden = !box.hidden;
+  btn.textContent = box.hidden ? '原文' : '收起';
+});
+
+function openDetail(id, anchor){
+  const d = SPU[id] || {};
+  document.getElementById('dImg').src = d.img || '';
+  document.getElementById('dName').textContent = d.name || id;
+  renderDetail(id);
+
+  const box = document.getElementById('detail');
+  box.classList.add('on');
+  const r = anchor.getBoundingClientRect();
+  const sideW = document.getElementById('side').getBoundingClientRect().right;
+  const w = 404, h = box.offsetHeight || 460;
+  let left = Math.min(sideW + 12, window.innerWidth - w - 12);
+  let top = Math.min(Math.max(70, r.top - 8), window.innerHeight - h - 12);
+  box.style.left = left + 'px';
+  box.style.top = top + 'px';
+}
+document.getElementById('dClose').onclick = () => document.getElementById('detail').classList.remove('on');
+
+/* 主题图片点击放大 */
+document.getElementById('dImg').onclick = () => {
+  const src = document.getElementById('dImg').src;
+  if (!src) return;
+  document.getElementById('imgbig').src = src;
+  document.getElementById('imgbox').classList.add('on');
+};
+const closeImg = () => document.getElementById('imgbox').classList.remove('on');
+document.getElementById('imgbox').onclick = e => { if (e.target.id !== 'imgbig') closeImg(); };
+document.getElementById('ibClose').onclick = closeImg;
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeImg(); });
+
+/* ---------- 提示 ---------- */
+let toastTimer = null;
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('on');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('on'), 2600);
+}
+
+/* ---------- 城市下拉 ---------- */
+function buildCitySelect(){
+  const sel = document.getElementById('citySel');
+  const list = cities.map(c => ({ c, n: DATA.filter(s => s.city === c).length }))
+                     .sort((a, b) => b.n - a.n);
+  sel.innerHTML = list.map(({ c, n }) =>
+    `<option value="${c}"${c === S.city ? ' selected' : ''}>${CITY_NAME[c] || c}</option>`).join('');
+  sel.onchange = () => {
+    S.city = sel.value;
+    S.spu = 0; S.sel = 0; S.store = null; S.svFit = false;
+    renderThemes();
+    const pts = cityStores().map(s => [s.lat, s.lng]);
+    if (pts.length) map.fitBounds(L.latLngBounds(pts).pad(0.12), { maxZoom: 12 });
+    renderMap();
+    syncHash();
+  };
+}
+
+/* ---------- hash ---------- */
+function syncHash(){
+  const p = new URLSearchParams();
+  if (S.city) p.set('city', S.city);
+  if (S.spu) p.set('spu', S.spu);
+  if (S.price !== 'all') p.set('price', S.price);
+  if (S.dur !== 'all') p.set('dur', S.dur);
+  if (S.type !== 'all') p.set('type', S.type);
+  if (S.age) p.set('age', S.age);
+  if (S.people) p.set('people', S.people);
+  if (S.cat !== 'all') p.set('cat', S.cat);
+  if (S.kw) p.set('kw', S.kw);
+  if (S.base !== 'amap') p.set('base', S.base);
+  try { history.replaceState(null, '', '#' + p.toString()); } catch (e) {}
+}
+function readHash(){
+  const p = new URLSearchParams(location.hash.slice(1));
+  if (p.get('city') && CITY_NAME[p.get('city')]) S.city = p.get('city');
+  S.spu = +(p.get('spu') || 0);
+  S.price = p.get('price') || 'all';
+  S.dur = p.get('dur') || 'all';
+  S.type = p.get('type') || 'all';
+  S.age = +(p.get('age') || 0);
+  S.people = +(p.get('people') || 0);
+  S.cat = p.get('cat') || 'all';
+  S.kw = p.get('kw') || '';
+  const b = p.get('base');
+  if (b && BASES[b]) S.base = b;
+}
+
+/* ---------- 启动 ---------- */
+readHash();
+if (S.base !== 'amap'){ map.removeLayer(currentBase); currentBase = BASES[S.base]().addTo(map); }
+
+document.getElementById('snap').textContent = META.snapshot_at.replace('T', ' ').slice(0, 16);
+buildCitySelect();
+document.getElementById('age').value = S.age || '';
+document.getElementById('kw').value = S.kw || '';
+document.getElementById('kw').oninput = e => { S.kw = e.target.value.trim(); renderThemes(); syncHash(); };
+document.getElementById('people').value = S.people || '';
+document.querySelectorAll('[data-base]').forEach(b => {
+  b.classList.toggle('on', b.dataset.base === S.base);
+  b.onclick = () => switchBase(b.dataset.base);
+});
+
+function bindChips(wrapId, key){
+  document.querySelectorAll(`#${wrapId} .fchip`).forEach(el => {
+    const v = el.dataset[key];
+    if (v === S[key === 'price' ? 'price' : key === 'dur' ? 'dur' : 'type']) el.classList.add('on');
+    else el.classList.remove('on');
+    el.onclick = () => {
+      document.querySelectorAll(`#${wrapId} .fchip`).forEach(x => x.classList.remove('on'));
+      el.classList.add('on');
+      S[key === 'price' ? 'price' : key === 'dur' ? 'dur' : 'type'] = v;
+      renderThemes();
+    };
+  });
+}
+bindChips('priceChips', 'price');
+bindChips('durChips', 'dur');
+bindChips('typeChips', 'type');
+
+document.getElementById('age').oninput = e => { S.age = +e.target.value || 0; renderThemes(); };
+document.getElementById('people').oninput = e => { S.people = +e.target.value || 0; renderThemes(); };
+document.getElementById('reset').onclick = () => {
+  S.price = 'all'; S.dur = 'all'; S.type = 'all'; S.age = 0; S.people = 0;
+  S.cat = 'all'; S.kw = ''; S.sel = 0; S.spu = 0; S.store = null;
+  document.getElementById('age').value = ''; document.getElementById('people').value = '';
+  document.getElementById('kw').value = '';
+  bindChips('priceChips', 'price'); bindChips('durChips', 'dur'); bindChips('typeChips', 'type');
+  renderThemes(); renderMap();
+};
+document.getElementById('svBack').onclick = () => {
+  S.spu = 0; S.store = null; S.svFit = false;
+  document.getElementById('detail').classList.remove('on');
+  renderThemes(); renderMap(); syncHash();
+};
+document.getElementById('locBtn').onclick = () => {
+  if (S.loc){ map.flyTo([S.loc.lat, S.loc.lng], 14, { duration: .7 }); }
+  else locate(false);
+};
+document.getElementById('nearBtn').onclick = () => {
+  const s = S.nearest;
+  if (!s) return;
+  map.flyTo([s.lat, s.lng], 15, { duration: .6 });
+  setTimeout(() => {
+    let m = markers.get(s.code);
+    if (!m){ drawStores([s]); m = markers.get(s.code); }
+    if (m) m.openPopup();
+  }, 660);
+};
+document.getElementById('fit').onclick = () => {
+  const pts = cityStores().map(s => [s.lat, s.lng]);
+  if (pts.length) map.fitBounds(L.latLngBounds(pts).pad(0.12), { maxZoom: 12 });
+};
+document.getElementById('zoomIn').onclick = () => map.zoomIn();
+document.getElementById('zoomOut').onclick = () => map.zoomOut();
+map.on('zoomend', renderMap);
+
+renderThemes();
+const pts = cityStores().map(s => [s.lat, s.lng]);
+if (pts.length) map.fitBounds(L.latLngBounds(pts).pad(0.12), { maxZoom: 12 });
+renderMap();
+if (!S.loc) setTimeout(() => locate(true), 1200);
+</script>
+</body>
+</html>
