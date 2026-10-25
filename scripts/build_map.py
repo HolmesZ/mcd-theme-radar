@@ -1,8 +1,12 @@
-"""把 data/*.json + template/map.html 编译成单文件 dist/index.html。
+"""把 data/*.json + template/*.html 编译成单文件页面。两种模板，按需求选：
 
-    python build_map.py                # 缓存里所有城市
-    python build_map.py --city 440800  # 只输出这一座城市（推荐）
-    python build_map.py --pages        # 额外输出 docs/index.html（GitHub Pages 用）
+    城市级（template/map.html）—— 聚焦一座城市，页头只有城市下拉
+    python build_map.py --city 440800                 # → dist/city.html
+    python build_map.py --city 440800 --pages         # → dist/city.html + docs/city.html
+
+    全国级（template/map_national.html）—— 省 › 市 两级筛选
+    python build_map.py --scope nation                # → dist/nation.html
+    python build_map.py --scope nation --pages        # → dist/nation.html + docs/index.html
 """
 
 from __future__ import annotations
@@ -12,11 +16,20 @@ import json
 import shutil
 from pathlib import Path
 
+import regions
+
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data"
-TPL = ROOT / "template" / "map.html"
-OUT = ROOT / "dist" / "index.html"
-PAGES_OUT = ROOT / "docs" / "index.html"
+
+TEMPLATES = {
+    "city": ROOT / "template" / "map.html",
+    "nation": ROOT / "template" / "map_national.html",
+}
+# 两种模板各自的产物名：城市级叫 city.html，全国级叫 nation.html（并作为 Pages 首页）
+OUTPUTS = {
+    "city": (ROOT / "dist" / "city.html", ROOT / "docs" / "city.html"),
+    "nation": (ROOT / "dist" / "nation.html", ROOT / "docs" / "index.html"),
+}
 
 
 def js_json(obj) -> str:
@@ -26,9 +39,14 @@ def js_json(obj) -> str:
 
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("--scope", choices=["city", "nation"], default="city",
+                    help="city = 单城市页（默认）；nation = 省 › 市 两级全国页")
     ap.add_argument("--city", default="", help="只输出该城市编码；不填则输出缓存里全部城市")
-    ap.add_argument("--pages", action="store_true", help="额外写一份 docs/index.html，供 GitHub Pages 直接托管")
+    ap.add_argument("--pages", action="store_true", help="同时写 docs/ 下的托管版本")
     args = ap.parse_args()
+
+    tpl = TEMPLATES[args.scope]
+    out, pages_out = OUTPUTS[args.scope]
 
     stores_raw = json.loads((DATA / "stores.json").read_text(encoding="utf-8"))
     meta = json.loads((DATA / "meta.json").read_text(encoding="utf-8"))
@@ -87,9 +105,20 @@ def main():
     meta_out = {
         "snapshot_at": stores_raw["snapshot_at"],
         "spus": spus_out,
-        "cities": [c for c in meta["cities"] if not args.city or c["code"] == args.city],
+        "cities": [dict(c) for c in meta["cities"] if not args.city or c["code"] == args.city],
         "stats": meta["stats"],
     }
+
+    # 省市两级下拉：按国标前两位把城市归到省，附门店数供下拉框标注
+    store_by_city: dict[str, int] = {}
+    for s in slim:
+        store_by_city[s["city"]] = store_by_city.get(s["city"], 0) + 1
+    provs = regions.group_by_province(meta_out["cities"])
+    for p in provs:
+        p["n_stores"] = sum(store_by_city.get(c["code"], 0) for c in p["cities"])
+    provs = [p for p in provs if p["n_stores"]]
+    provs.sort(key=lambda p: -p["n_stores"])
+    meta_out["provinces"] = provs
 
     slots_path = DATA / "slots.json"
     slots = json.loads(slots_path.read_text(encoding="utf-8")) if slots_path.exists() else {
@@ -107,20 +136,20 @@ def main():
         }
         slots["dates_by_spu"] = {k: v for k, v in slots["dates_by_spu"].items() if v}
 
-    html = TPL.read_text(encoding="utf-8")
+    html = tpl.read_text(encoding="utf-8")
     html = (html.replace("__DATA__", js_json(slim))
                 .replace("__META__", js_json(meta_out))
                 .replace("__SLOTS__", js_json(slots)))
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(html, encoding="utf-8")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(html, encoding="utf-8")
     if args.pages:
-        PAGES_OUT.parent.mkdir(parents=True, exist_ok=True)
-        PAGES_OUT.write_text(html, encoding="utf-8")
+        pages_out.parent.mkdir(parents=True, exist_ok=True)
+        pages_out.write_text(html, encoding="utf-8")
 
-    size = OUT.stat().st_size / 1024
-    print(f"已生成 {OUT}")
+    size = out.stat().st_size / 1024
+    print(f"已生成 {out}  [{args.scope} 模板: {tpl.name}]")
     if args.pages:
-        print(f"已生成 {PAGES_OUT}（GitHub Pages）")
+        print(f"已生成 {pages_out}（GitHub Pages）")
     print(f"  门店 {len(slim)} 家 / 城市 {len({s['city'] for s in slim})} 个 / 主题 {len(meta_out['spus'])} 个 / {size:.0f} KB")
     if slots.get("slots"):
         print(f"  场次：{len(slots['slots'])} 家店 / 生成于 {slots['generated_at']}")

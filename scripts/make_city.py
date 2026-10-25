@@ -9,7 +9,11 @@
     2. 确保 27 个主题活动详情已缓存（仅首次调用）
     3. 抓该城市的可承办门店（可增量合并，其它城市缓存保留）
     4. 挑门店最多的前 N 个主题，抓可约日期与场次
-    5. 编译单文件页面，输出带 hash 的链接
+    5. 用「城市级模板」编译单文件页面，输出带 hash 的链接
+
+只出单城页面。要全国 / 省 › 市 两级的页面，用：
+    python fetch_snapshot.py --all
+    python build_map.py --scope nation --pages
 
 所有缓存都在 data/ 下，重复运行只补缺失部分。
 """
@@ -152,12 +156,12 @@ def main():
         else:
             print("本城没有可承办门店，跳过场次")
 
-    # 4) 编译
-    run("build_map.py", "--city", city["code"])
+    # 4) 编译（城市级模板）
+    run("build_map.py", "--scope", "city", "--city", city["code"])
 
     print("\n" + "=" * 56)
-    print(f"页面已生成：{ROOT / 'dist' / 'index.html'}")
-    print(f"直达链接：dist/index.html#city={city['code']}")
+    print(f"页面已生成：{ROOT / 'dist' / 'city.html'}")
+    print(f"直达链接：dist/city.html#city={city['code']}")
     print("=" * 56)
     return 0
 

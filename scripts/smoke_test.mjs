@@ -1,22 +1,26 @@
-/* 冒烟测试：不开浏览器，用桩件跑 dist/index.html 的初始化与关键渲染路径。
+/* 冒烟测试：不开浏览器，用桩件跑产物的初始化与关键渲染路径。
+ * 自动识别模板：页面里有 provSel 就是全国级，否则城市级。
  *
- *   node smoke_test.mjs            # 测 dist/index.html
- *   node smoke_test.mjs ../dist/index.html
+ *   node smoke_test.mjs                    # 测 ../dist/nation.html
+ *   node smoke_test.mjs ../dist/city.html  # 测城市级
+ *   node smoke_test.mjs ../dist/nation.html
  *
- * 覆盖：
+ * 覆盖（城市级）：
  *   1. 页面初始化不抛错（Leaflet/DOM 全桩件）
  *   2. 城市下拉 = 缓存里全部城市
- *   3. 每个城市 renderThemes 都能出主题卡
+ *   3. 每个城市的 renderThemes 出主题卡
  *   4. 每个城市抽 1 个主题跑 renderStoreView 出门店行
- *   5. 抽 3 个主题跑 renderDetail（重点/详细页签）
- *   6. 场次提示按城市如实显示
+ *   5. 场次提示按城市如实显示
+ *   6. 抽 3 个主题跑 renderDetail（重点/详细页签）
+ *
+ * 覆盖（全国级）：以上 + 省份排行卡、省下拉 = 全国 + 全部省、城市下拉按省过滤
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const dist = resolve(here, process.argv[2] || '../dist/index.html');
+const dist = resolve(here, process.argv[2] || '../dist/nation.html');
 const html = readFileSync(dist, 'utf-8');
 
 /* ---------- 桩件 ---------- */
@@ -98,54 +102,119 @@ const check = (name, cond, extra = '') => {
   if (!cond) failures++;
 };
 
+const isNation = /id="provSel"/.test(html);
+console.log(`模板：${isNation ? '全国级（省 › 市）' : '城市级（单城市）'}\n`);
+
+const suffix = isNation
+  ? '\n;globalThis.__T = { DATA, META, SLOTS, S, SPU, PROVS, PROV_OF, cityStores, renderThemes, renderStoreView, renderDetail, buildProvSelect, buildCitySelect };'
+  : '\n;globalThis.__T = { DATA, META, SLOTS, S, SPU, cityStores, renderThemes, renderStoreView, renderDetail };';
+
 try {
   // const/let 声明不会挂到全局，尾部追加导出句柄供断言使用
-  (0, eval)(code + '\n;globalThis.__T = { DATA, META, SLOTS, S, SPU, cityStores, renderThemes, renderStoreView, renderDetail };');
+  (0, eval)(code + suffix);
   check('页面初始化', true);
 } catch (e) {
   console.error('❌ 页面初始化抛错：', e.stack);
   process.exit(1);
 }
-const { DATA, META, SLOTS, S, SPU, cityStores, renderThemes, renderStoreView, renderDetail } = globalThis.__T;
+const T = globalThis.__T;
+const { DATA, META, SLOTS, S, SPU, cityStores, renderThemes, renderStoreView, renderDetail } = T;
 
 /* ---------- 断言 ---------- */
-const optCount = (E('citySel').innerHTML.match(/<option/g) || []).length;
-check('城市下拉覆盖全部缓存城市', optCount === [...new Set(DATA.map(s => s.city))].length,
-      `${optCount} 城`);
-
 const cityCodes = [...new Set(DATA.map(s => s.city))];
-let themesOK = 0, storesOK = 0, hintOK = 0;
-for (const c of cityCodes) {
-  S.city = c; S.spu = 0; S.sel = 0; S.store = null; S.loc = null;
-  renderThemes();
-  const cards = (E('themes').innerHTML.match(/class="tcard/g) || []).length;
-  if (cards > 0) themesOK++; else console.error(`   ${c} 无主题卡`);
-  // 场次提示
-  const hint = E('slotHint').innerHTML;
+const slotsHintOK = (hint) => {
   const cityHasSlots = cityStores().some(st => Object.values(SLOTS.dates_by_spu || {})
     .some(m => m[st.code] && m[st.code].length));
-  if ((cityHasSlots && hint.includes('已接入')) || (!cityHasSlots && hint.includes('未接入'))) hintOK++;
-  // 抽一个主题跑门店列表
-  const spu = cityStores()[0].spus[0];
-  S.spu = spu; S.sel = spu;
-  try { renderStoreView(); if ((E('svList').innerHTML.match(/svrow/g) || []).length > 0) storesOK++; }
-  catch (e) { console.error(`   ${c} renderStoreView 抛错：`, e.message); }
-  S.spu = 0;
-}
-check('全部城市 renderThemes 出卡', themesOK === cityCodes.length, `${themesOK}/${cityCodes.length}`);
-check('全部城市 renderStoreView 出行', storesOK === cityCodes.length, `${storesOK}/${cityCodes.length}`);
-check('场次提示按城市如实显示', hintOK === cityCodes.length, `${hintOK}/${cityCodes.length}`);
+  return cityHasSlots ? hint.includes('已接入') : hint.includes('未接入');
+};
+const detailCheck = () => {
+  const hlIds = META.spus.filter(s => s.hl && Object.keys(s.hl).length).slice(0, 3).map(s => s.spu_id);
+  let ok = 0;
+  for (const id of hlIds) {
+    try {
+      renderDetail(id);
+      const h = E('dHl').innerHTML;
+      if (h.includes('套餐') || h.includes('赠品') || h.includes('预约')) ok++;
+    } catch (e) { console.error(`   renderDetail(${id}) 抛错：`, e.message); }
+  }
+  return [ok, hlIds.length];
+};
 
-// 详情卡：抽 3 个有「重点」的主题（hl 是 {meals/gifts/booking...} 对象）
-const hlIds = META.spus.filter(s => s.hl && Object.keys(s.hl).length).slice(0, 3).map(s => s.spu_id);
-let detailOK = 0;
-for (const id of hlIds) {
-  try { renderDetail(id);
-    const h = E('dHl').innerHTML;
-    if (h.includes('套餐') || h.includes('赠品') || h.includes('预约')) detailOK++;
-  } catch (e) { console.error(`   renderDetail(${id}) 抛错：`, e.message); }
+if (!isNation) {
+  /* ===== 城市级模板 ===== */
+  const optCount = (E('citySel').innerHTML.match(/<option/g) || []).length;
+  check('城市下拉覆盖全部缓存城市', optCount === cityCodes.length, `${optCount} 城`);
+
+  let themesOK = 0, storesOK = 0, hintOK = 0;
+  for (const c of cityCodes) {
+    S.city = c; S.spu = 0; S.sel = 0; S.store = null; S.loc = null;
+    renderThemes();
+    if ((E('themes').innerHTML.match(/class="tcard/g) || []).length > 0) themesOK++;
+    else console.error(`   ${c} 无主题卡`);
+    if (slotsHintOK(E('slotHint').innerHTML)) hintOK++;
+    const spu = cityStores()[0].spus[0];
+    S.spu = spu; S.sel = spu;
+    try { renderStoreView(); if ((E('svList').innerHTML.match(/svrow/g) || []).length > 0) storesOK++; }
+    catch (e) { console.error(`   ${c} renderStoreView 抛错：`, e.message); }
+    S.spu = 0;
+  }
+  check('全部城市 renderThemes 出卡', themesOK === cityCodes.length, `${themesOK}/${cityCodes.length}`);
+  check('全部城市 renderStoreView 出行', storesOK === cityCodes.length, `${storesOK}/${cityCodes.length}`);
+  check('场次提示按城市如实显示', hintOK === cityCodes.length, `${hintOK}/${cityCodes.length}`);
+
+  const [dOk, dAll] = detailCheck();
+  check('renderDetail 出重点内容', dOk === dAll, `${dOk}/${dAll}`);
+} else {
+  /* ===== 全国级模板 ===== */
+  const { PROVS, PROV_OF, buildProvSelect, buildCitySelect } = T;
+
+  // 1. 全国视图 = 省份排行
+  S.prov = ''; S.city = ''; S.spu = 0; S.sel = 0; S.store = null; S.loc = null;
+  buildProvSelect(); buildCitySelect();
+  renderThemes();
+  const pCards = (E('themes').innerHTML.match(/class="pcard/g) || []).length;
+  check('全国视图出省份排行', pCards === PROVS.length, `${pCards}/${PROVS.length} 省`);
+  const provOpts = (E('provSel').innerHTML.match(/<option/g) || []).length;
+  check('省下拉 = 全国 + 全部省', provOpts === PROVS.length + 1, `${provOpts} 项`);
+  check('全国层级禁用城市下拉', E('citySel').disabled === true);
+
+  // 2. 每个省：全省主题卡 + 城市下拉按省过滤
+  let provOK = 0, provCityOptOK = 0;
+  for (const p of PROVS) {
+    S.prov = p.code; S.city = ''; S.spu = 0; S.sel = 0; S.store = null; S.loc = null;
+    buildCitySelect();
+    renderThemes();
+    if ((E('themes').innerHTML.match(/class="tcard/g) || []).length > 0) provOK++;
+    else console.error(`   ${p.name} 无主题卡`);
+    const nCity = new Set(DATA.filter(s => PROV_OF[s.city] === p.code).map(s => s.city)).size;
+    const opts = (E('citySel').innerHTML.match(/<option/g) || []).length;
+    if (opts === nCity + 1) provCityOptOK++;
+    else console.error(`   ${p.name} 城市下拉 ${opts} 项，应为 ${nCity + 1}`);
+  }
+  check('全部省 renderThemes 出卡', provOK === PROVS.length, `${provOK}/${PROVS.length}`);
+  check('城市下拉按省过滤', provCityOptOK === PROVS.length, `${provCityOptOK}/${PROVS.length}`);
+
+  // 3. 每个城市：主题卡 + 门店列表 + 场次提示
+  let themesOK = 0, storesOK = 0, hintOK = 0;
+  for (const c of cityCodes) {
+    S.prov = PROV_OF[c]; S.city = c; S.spu = 0; S.sel = 0; S.store = null; S.loc = null;
+    renderThemes();
+    if ((E('themes').innerHTML.match(/class="tcard/g) || []).length > 0) themesOK++;
+    else console.error(`   ${c} 无主题卡`);
+    if (slotsHintOK(E('slotHint').innerHTML)) hintOK++;
+    const spu = cityStores()[0].spus[0];
+    S.spu = spu; S.sel = spu;
+    try { renderStoreView(); if ((E('svList').innerHTML.match(/svrow/g) || []).length > 0) storesOK++; }
+    catch (e) { console.error(`   ${c} renderStoreView 抛错：`, e.message); }
+    S.spu = 0;
+  }
+  check('全部城市 renderThemes 出卡', themesOK === cityCodes.length, `${themesOK}/${cityCodes.length}`);
+  check('全部城市 renderStoreView 出行', storesOK === cityCodes.length, `${storesOK}/${cityCodes.length}`);
+  check('场次提示按城市如实显示', hintOK === cityCodes.length, `${hintOK}/${cityCodes.length}`);
+
+  const [dOk, dAll] = detailCheck();
+  check('renderDetail 出重点内容', dOk === dAll, `${dOk}/${dAll}`);
 }
-check('renderDetail 出重点内容', detailOK === hlIds.length, `${detailOK}/${hlIds.length}`);
 
 console.log(failures ? `\n${failures} 项未通过` : '\n全部通过');
 process.exit(failures ? 1 : 0);

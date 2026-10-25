@@ -1,6 +1,7 @@
 """抓取派对门店快照。
 
     python fetch_snapshot.py --region gd            # 广东省 21 个地级市
+    python fetch_snapshot.py --all                  # 全国（约 281 城 / 5200 次调用）
     python fetch_snapshot.py --cities 440100,440300 # 指定城市
     python fetch_snapshot.py --region gd --max-spu 4
 
@@ -19,6 +20,7 @@ import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
+import regions
 from mcp_client import MCPClient
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -114,18 +116,27 @@ def fetch_city_stores(client: MCPClient, spu_id: int, city: dict, force: bool = 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--region", default="gd")
-    ap.add_argument("--cities", default="")
+    ap.add_argument("--region", default="gd", help="gd = 广东省；配合 --all 忽略")
+    ap.add_argument("--all", action="store_true", help="全国：抓所有主题覆盖的全部城市（按省份优先级顺序）")
+    ap.add_argument("--cities", default="", help="指定城市编码，逗号分隔")
     ap.add_argument("--max-spu", type=int, default=0, help="只抓前 N 个主题（调试用）")
     ap.add_argument("--force", action="store_true")
+    ap.add_argument("--rebuild", action="store_true", help="不调接口，只用 data/raw 缓存重建 stores.json+meta.json")
     args = ap.parse_args()
 
     DATA.mkdir(parents=True, exist_ok=True)
     RAW.mkdir(parents=True, exist_ok=True)
 
-    target = dict(GD_CITIES) if args.region == "gd" else {}
+    if args.rebuild:
+        rebuild_from_cache()
+        return
+
+    # target=None 表示不限城市（全国）
+    target: dict[str, str] | None = dict(GD_CITIES) if args.region == "gd" else {}
+    if args.all:
+        target = None
     if args.cities:
-        target = {c: target.get(c, c) for c in args.cities.split(",") if c}
+        target = {c: (target or {}).get(c, c) for c in args.cities.split(",") if c}
 
     client = MCPClient()
     print(f"[1/3] 主题清单")
@@ -134,19 +145,30 @@ def main():
         spus = spus[: args.max_spu]
 
     print(f"[2/3] 主题覆盖城市")
-    plan: list[tuple[dict, list[dict]]] = []
+    # city_code -> 该城要抓的主题列表；顺便记下城市元信息
+    plan: dict[str, list[dict]] = {}
+    city_meta: dict[str, dict] = {}
     for spu in spus:
-        cities = [c for c in fetch_cities(client, spu["spu_id"]) if c["code"] in target]
-        print(f"  {spu['spu_id']:>6} {spu['name'][:16]:<18} 覆盖广东 {len(cities):>2} 城")
-        if cities:
-            plan.append((spu, cities))
+        cities = fetch_cities(client, spu["spu_id"])
+        if target is not None:
+            cities = [c for c in cities if c["code"] in target]
+        for c in cities:
+            plan.setdefault(c["code"], []).append(spu)
+            city_meta.setdefault(c["code"], c)
+        print(f"  {spu['spu_id']:>6} {spu['name'][:16]:<18} 覆盖 {len(cities):>3} 城")
 
-    total = sum(len(c) for _, c in plan)
-    print(f"[3/3] 门店抓取：{total} 次调用")
+    # 城市优先、省份分区的顺序：跑完一个省就是一份完整快照，方便中途预览
+    ordered = sorted(plan.items(), key=lambda kv: (regions.province_rank(kv[0]), kv[0]))
+    total = sum(len(v) for v in plan.values())
+    n_prov = len({regions.province_code(k) for k in plan})
+    print(f"[3/3] 门店抓取：{len(plan)} 城 / {n_prov} 省 / {total} 次调用")
+
     merged: dict[str, dict] = {}
     done = 0
-    for spu, cities in plan:
-        for city in cities:
+    for city_code, spus_for_city in ordered:
+        city = city_meta[city_code]
+        prov = regions.province_name(city_code)
+        for spu in spus_for_city:
             done += 1
             try:
                 stores = fetch_city_stores(client, spu["spu_id"], city, force=args.force)
@@ -154,30 +176,39 @@ def main():
                 print(f"  ! {spu['spu_id']}/{city['name']} 失败：{e}")
                 continue
             for s in stores:
-                code = str(s.get("code", ""))
-                if not code:
-                    continue
-                rec = merged.get(code)
-                if rec is None:
-                    rec = merged[code] = {
-                        "code": code,
-                        "name": s.get("name", ""),
-                        "short": s.get("shortName", ""),
-                        "address": s.get("address", ""),
-                        "city": city["code"],
-                        "city_name": s.get("cityName", city["name"]),
-                        "lat": s.get("latitude"),
-                        "lng": s.get("longitude"),
-                        "biz": s.get("businessStatus"),
-                        "online": s.get("onlineBusinessStatus"),
-                        "spus": [],
-                    }
-                if spu["spu_id"] not in rec["spus"]:
-                    rec["spus"].append(spu["spu_id"])
-            if done % 20 == 0 or done == total:
-                print(f"  {done}/{total}  门店 {len(merged)}")
+                merge_record(merged, s, spu["spu_id"], city["code"], city["name"])
+        # 每跑完一座城市打一行，日志即进度条（省 + 城 + 累计）
+        print(f"  [{done:>4}/{total}] {prov}·{city['name']:<6} 主题 {len(spus_for_city):>2}  门店 {len(merged)}")
 
-    # ---- 增量合并：本次抓的城市覆盖旧记录，其它城市原样保留 ----
+    write_outputs(merged, spus, total)
+
+
+def merge_record(merged: dict, s: dict, spu_id: int, city_code: str, city_name: str):
+    """一条门店记录并入 merged（按 code 去重，spus 累加）。"""
+    code = str(s.get("code", ""))
+    if not code:
+        return
+    rec = merged.get(code)
+    if rec is None:
+        rec = merged[code] = {
+            "code": code,
+            "name": s.get("name", ""),
+            "short": s.get("shortName", ""),
+            "address": s.get("address", ""),
+            "city": city_code,
+            "city_name": s.get("cityName", city_name),
+            "lat": s.get("latitude"),
+            "lng": s.get("longitude"),
+            "biz": s.get("businessStatus"),
+            "online": s.get("onlineBusinessStatus"),
+            "spus": [],
+        }
+    if spu_id and spu_id not in rec["spus"]:
+        rec["spus"].append(spu_id)
+
+
+def write_outputs(merged: dict, spus: list, calls: int):
+    """增量合并写入 stores.json / meta.json：本次抓的城市覆盖旧记录，其它城市原样保留。"""
     new_stores = [s for s in merged.values() if s["lat"] and s["lng"]]
     new_cities = {s["city"] for s in new_stores}
 
@@ -206,10 +237,18 @@ def main():
     (DATA / "meta.json").write_text(
         json.dumps({
             "snapshot_at": now_iso(),
-            "cities": [{"code": k, "name": v} for k, v in sorted(city_names.items())],
+            "cities": [
+                {
+                    "code": k,
+                    "name": v,
+                    "prov": regions.province_code(k),
+                    "prov_name": regions.province_name(k),
+                }
+                for k, v in sorted(city_names.items())
+            ],
             "spus": spus,
             "stats": {
-                "calls": total,
+                "calls": calls,
                 "stores": len(stores),
                 "city_count": len(city_names),
             },
@@ -218,6 +257,25 @@ def main():
     )
     print(f"\n本次：{len(new_stores)} 家门店 / {len(new_cities)} 城")
     print(f"缓存：{len(stores)} 家 / {len(city_names)} 城（含历史）→ {store_path}")
+
+
+def rebuild_from_cache():
+    """不调接口，只用 data/raw/*.json 重建 stores.json —— 抓取中断时用它出中间态。"""
+    spu_cache = RAW / "_spu_list.json"
+    spus = json.loads(spu_cache.read_text(encoding="utf-8")) if spu_cache.exists() else []
+    merged: dict[str, dict] = {}
+    files = [f for f in sorted(RAW.glob("*.json")) if not f.name.startswith("_")]
+    for f in files:
+        try:
+            spu_part, city_code = f.stem.split("_", 1)
+            spu_id = int(spu_part)
+            records = json.loads(f.read_text(encoding="utf-8"))
+        except (ValueError, json.JSONDecodeError):
+            continue
+        for s in records:
+            merge_record(merged, s, spu_id, city_code, s.get("cityName", city_code))
+    print(f"从缓存重建：{len(files)} 个响应文件")
+    write_outputs(merged, spus, len(files))
 
 
 if __name__ == "__main__":

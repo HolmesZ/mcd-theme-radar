@@ -4,11 +4,10 @@
 __pycache__/
 *.pyc
 
-# 按需抓取的数据缓存（不进仓库，用 make_city.py 重建）
-data/*.json
-data/raw/
+# 按需抓取的数据缓存（不进仓库，用 make_city.py / fetch_snapshot.py 重建）
+data/
 
-# 本地构建产物（docs/index.html 是提交进仓库的静态托管版本）
+# 本地构建产物（docs/ 下是提交进仓库的静态托管版本）
 dist/
 
 # 系统
