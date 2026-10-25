@@ -1,7 +1,7 @@
 # 麦麦主题雷达 · mcd-theme-radar
 
 > 一句话：**问一句「广州有什么麦当劳主题活动」，得到一张能点、能筛、能导航的活地图。**
-> 问一句「全国哪些城市有海底小纵队」，得到一张从内地钻到街道的图。
+> 问一句「内地哪些城市有海底小纵队」，得到一张从内地钻到街道的图。
 
 [![McDonald's MCP](https://img.shields.io/badge/MCP-mcp.mcd.cn-DA291C)](https://mcp.mcd.cn)
 [![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?logo=python&logoColor=white)](#安装)
@@ -247,7 +247,7 @@ Skill：→ 判断这是「只看一座城」→ 城市版
 ```
 
 ```
-用户：全国哪些城市有海底小纵队？哪个省最多？
+用户：内地哪些城市有海底小纵队？哪个省最多？
 Skill：→ 判断涉及「范围本身」→ 内地版
       → python fetch_snapshot.py --all && python build_map.py --scope nation
 回复：广东 919 家最多（21 城），北京 474、福建 366 次之；
