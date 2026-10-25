@@ -59,6 +59,34 @@ PROVINCE_ORDER = [
 ]
 
 
+SCOPE_LABEL = "中国大陆"
+
+# 港澳台同属中国行政区国标编码，但不在本接口的数据域内，
+# 因此单独划出来：任何「内地」口径的统计都必须排除它们。
+SAR_CODES = {"71", "81", "82"}
+
+def mainland_codes() -> list[str]:
+    """中国内地 31 个省级行政区代码（不含港澳台）。"""
+    return [c for c in PROVINCES if c not in SAR_CODES]
+
+
+def missing_provinces(covered: list[str]) -> list[dict]:
+    """内地 31 省级行政区里，本次快照没有可承办门店的那些。
+
+    这是「有麦当劳餐厅」与「有可承办主题活动的餐厅」的区别：
+    青海等地有门店，但接口里没有任何一家配置为可承办，必须如实标出来，
+    不能让页面看起来像全国每个省都覆盖了。
+    """
+    have = {str(c)[:2] for c in covered}
+    out = []
+    for code in mainland_codes():
+        if code in have:
+            continue
+        short, full = PROVINCES[code]
+        out.append({"code": code, "name": short, "full": full, "n": 0})
+    return out
+
+
 def province_code(city_code: str) -> str:
     """城市编码 → 省份代码。直辖市等 6 位码同样适用。"""
     return str(city_code)[:2]
@@ -109,4 +137,9 @@ if __name__ == "__main__":
     assert province_name("110100") == "北京"
     assert province_name("310000") == "上海"
     assert province_name("999999") == "其他"
-    print("regions.py 自检通过：", len(PROVINCES), "个省级行政区")
+    ml = mainland_codes()
+    assert len(ml) == 31, f"内地省级行政区应为 31 个，实得 {len(ml)}"
+    assert not (set(ml) & SAR_CODES)
+    miss = missing_provinces(["110100", "440100"])
+    print("regions.py 自检通过：", len(PROVINCES), "个省级行政区 /",
+          "内地", len(ml), "个 /", "示例零覆盖", [m["name"] for m in miss][:3])

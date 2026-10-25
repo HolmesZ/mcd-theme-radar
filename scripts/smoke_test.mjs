@@ -172,10 +172,20 @@ if (!isNation) {
   S.prov = ''; S.city = ''; S.spu = 0; S.sel = 0; S.store = null; S.loc = null;
   buildProvSelect(); buildCitySelect();
   renderThemes();
-  const pCards = (E('themes').innerHTML.match(/class="pcard/g) || []).length;
-  check('全国视图出省份排行', pCards === PROVS.length, `${pCards}/${PROVS.length} 省`);
+  const html0 = E('themes').innerHTML;
+  const zeroCards = (html0.match(/class="pcard zero"/g) || []).length;
+  const allCards = (html0.match(/class="pcard( zero)?"/g) || []).length;
+  const missing = [...(META.missing_provs || [])];
+  // 省份卡 = 有数据的省 + 零覆盖的省（后者灰显，必须露脸）
+  check('全国视图出省份排行', allCards === PROVS.length + missing.length,
+        `${allCards} 卡 = ${PROVS.length} 有数据 + ${zeroCards} 零覆盖`);
+  check('零覆盖省份如实显示', zeroCards === missing.length && missing.length > 0,
+        `${zeroCards}/${missing.length}：${missing.map(m => m.name).join('、') || '无'}`);
+  // 零覆盖省份不可点：不应带 data-prov 或带 zero 类（点击处理会跳过）
+  const zeroClickable = (html0.match(/class="pcard zero"[^>]*data-prov=/g) || []).length;
+  check('零覆盖省份不可点', zeroClickable === 0);
   const provOpts = (E('provSel').innerHTML.match(/<option/g) || []).length;
-  check('省下拉 = 全国 + 全部省', provOpts === PROVS.length + 1, `${provOpts} 项`);
+  check('省下拉 = 内地 + 全部省', provOpts === PROVS.length + 1, `${provOpts} 项`);
   check('全国层级禁用城市下拉', E('citySel').disabled === true);
 
   // 2. 每个省：全省主题卡 + 城市下拉按省过滤

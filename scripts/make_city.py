@@ -84,6 +84,12 @@ def load_cities() -> dict[str, dict]:
 def resolve_city(query: str) -> dict:
     idx = load_cities()
     q = norm(query)
+    if q in ("香港", "澳门", "台湾", "台北", "高雄", "台中", "台南", "hk", "macau", "taipei"):
+        raise SystemExit(
+            "中国香港 / 中国澳门 / 中国台湾不在本接口的覆盖范围：\n"
+            "mcp.mcd.cn 的数据域是麦当劳中国内地业务，三地为不同运营主体与不同 App。\n"
+            f"当前可查范围是中国大陆 {len(idx)} 个城市，跑 `python make_city.py --list` 查看。"
+        )
     exact = [c for c in idx.values() if norm(c["name"]) == q]
     if exact:
         return exact[0]

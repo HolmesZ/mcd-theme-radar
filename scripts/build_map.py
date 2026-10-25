@@ -107,6 +107,9 @@ def main():
         "spus": spus_out,
         "cities": [dict(c) for c in meta["cities"] if not args.city or c["code"] == args.city],
         "stats": meta["stats"],
+        # 内地 31 个省级行政区里本次没有可承办门店的那些（如实标出，别假装全覆盖）
+        "missing_provs": regions.missing_provinces([c["code"] for c in meta["cities"]]),
+        "mainland_total": len(regions.mainland_codes()),
     }
 
     # 省市两级下拉：按国标前两位把城市归到省，附门店数供下拉框标注

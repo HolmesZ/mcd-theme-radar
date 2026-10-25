@@ -356,6 +356,12 @@
   .pmeta{font-size:11px;color:var(--ink3);margin-top:3px}
   .pmeta b{color:var(--ink2);font-weight:600}
   .pbar{height:3px;border-radius:2px;background:#f1ece4;margin-top:6px;overflow:hidden}
+
+  /* 零覆盖省份：灰掉、不可点，但必须在列表里露脸 */
+  .pcard.zero{opacity:.62;background:#faf8f5;cursor:default}
+  .pcard.zero:hover{background:#faf8f5}
+  .pcard.zero .pname,.pcard.zero .pmeta{font-weight:500}
+  .pcard.zero .pgo{display:none}
   .pbar i{display:block;height:100%;border-radius:2px;
         background:linear-gradient(90deg,#e8a33d,var(--red))}
   .pgo{font-size:15px;color:#cdc4b6;flex:0 0 auto}
@@ -547,6 +553,10 @@ const CITY_NAME = Object.fromEntries(META.cities.map(c => [c.code, c.name]));
 const PROV_OF = Object.fromEntries(META.cities.map(c => [c.code, c.prov || '']));
 const PROVS = META.provinces || [];
 const PROV_NAME = Object.fromEntries(PROVS.map(p => [p.code, p.name]));
+// 内地 31 个省级行政区里本次没有可承办门店的（青海等）。
+// 接口没返回不等于当地没有麦当劳门店，只是没有一家被配置为可承办主题活动。
+const MISSING_PROVS = META.missing_provs || [];
+const MAINLAND_TOTAL = META.mainland_total || 31;
 const priceOf = id => (SPU[id] || {}).price ?? 0;
 const rangeH = id => ((SPU[id] || {}).range || 0) * 0.5;
 const parseRange = str => {
@@ -602,7 +612,7 @@ function cityStores(){ return viewStores(); }
 
 /* 当前层级的叫法：全市 / 全省 / 全国 */
 function scopeLabel(){
-  if (!S.prov) return '全国';
+  if (!S.prov) return '内地';
   if (S.city) return CITY_NAME[S.city] || S.city;
   return (PROV_NAME[S.prov] || S.prov) + '全省';
 }
@@ -1041,7 +1051,7 @@ function scopeChrome(){
   const rst = document.getElementById('reset');
   if (rst) rst.style.display = nation ? 'none' : 'inline';
   document.getElementById('legend').style.display = nation ? 'none' : 'block';
-  document.getElementById('fit').textContent = nation ? '看全国' : (S.city ? '看全市' : '看全省');
+  document.getElementById('fit').textContent = nation ? '看内地' : (S.city ? '看全市' : '看全省');
 }
 
 /* ---------- 全国视图：省份排行列表 ---------- */
@@ -1056,9 +1066,14 @@ function renderProvinces(){
   const nSpu = new Set(DATA.flatMap(s => s.spus)).size;
 
   document.getElementById('themeCount').textContent =
-    `· ${rows.length} 省 / ${nCity} 城 / ${DATA.length} 家店`;
+    `· ${rows.length}/${MAINLAND_TOTAL} 省 / ${nCity} 城 / ${DATA.length} 家店`;
+
+  const cover = MISSING_PROVS.length
+    ? ` · <b title="有麦当劳门店，但没有被配置为可承办主题活动的门店">${MISSING_PROVS.map(m => esc(m.name)).join('、')}</b> 暂无可承办门店`
+    : '';
   document.getElementById('slotHint').innerHTML =
-    `全国 ${nSpu} 个在售主题；点省份进全省，或直接点地图气泡`;
+    `中国大陆在售 ${META.spus.length} 个主题、有门店举办 ${nSpu} 个，暂不含港澳台（该接口数据域为麦当劳中国内地业务）${cover}；`
+    + `点省份进全省，或直接点地图气泡`;
 
   if (!rows.length){
     box.innerHTML = `<div class="empty">暂无数据，先跑一次 fetch_snapshot.py --all</div>`;
@@ -1076,10 +1091,17 @@ function renderProvinces(){
       </div>
       <div class="pgo">›</div>
     </div>`;
-  }).join('');
+  }).join('') + MISSING_PROVS.map(m => `
+    <div class="pcard zero" title="该省有麦当劳门店，但没有被配置为可承办主题活动的门店">
+      <div class="prank">—</div>
+      <div class="pmain">
+        <div class="pname">${esc(m.name)}</div>
+        <div class="pmeta">暂无可承办门店</div>
+      </div>
+    </div>`).join('');
 
   box.querySelectorAll('.pcard').forEach(el => {
-    el.onclick = () => pickProv(el.dataset.prov);
+    el.onclick = () => { if (!el.classList.contains('zero')) pickProv(el.dataset.prov); };
   });
 }
 
@@ -1313,7 +1335,7 @@ const cityCount = code => DATA.filter(s => s.city === code).length;
 
 function buildProvSelect(){
   const sel = document.getElementById('provSel');
-  sel.innerHTML = [`<option value=""${S.prov === '' ? ' selected' : ''}>全国</option>`]
+  sel.innerHTML = [`<option value=""${S.prov === '' ? ' selected' : ''}>全部 · 内地</option>`]
     .concat(PROVS.map(p =>
       `<option value="${p.code}"${p.code === S.prov ? ' selected' : ''}>${p.name} · ${p.n_stores}</option>`))
     .join('');

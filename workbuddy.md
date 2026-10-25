@@ -92,26 +92,26 @@
 - 无头 Chrome 截取两张页面图放入 `assets/`
 - 创建公开仓库、推送、开启 Pages、按官方格式提交报名 Issue
 
-### 阶段 7 · 全国版与双模板（10-25 11:20 — 12:30）
+### 阶段 7 · 内地版与双模板（10-25 11:20 — 12:30）
 
-**提问**：「我想制作一个全国版的麦麦主题雷达，标题的筛选由单一城市变成省市两级筛选。」随后追加：「这个模板，既要保留城市级的模板，也要保留省市级的模板，具体 skill 要根据用户的需求来进行选择。」
+**提问**：「我想制作一个内地版的麦麦主题雷达，标题的筛选由单一城市变成省市两级筛选。」随后追加：「这个模板，既要保留城市级的模板，也要保留省市级的模板，具体 skill 要根据用户的需求来进行选择。」
 
 **执行**：
 
-1. 摸清全国抓取成本：`query-party-city` 已有的 27 份城市覆盖缓存显示，全国实际只需 **5224 次**门店调用（而不是 27 × 400 的粗估），单进程约 90 分钟
+1. 摸清内地抓取成本：`query-party-city` 已有的 27 份城市覆盖缓存显示，内地实际只需 **5224 次**门店调用（而不是 27 × 400 的粗估），单进程约 90 分钟
 2. 新增 `scripts/regions.py`：城市编码前两位 → 省份，含展示排序与分组，**省份不额外调接口**
-3. `fetch_snapshot.py` 加 `--all`（全国）、`--rebuild`（免调用、从 raw 缓存重建）；抓取循环改为**城市优先、按省排序**，跑完一个省就是一份可用快照
-4. 新建 `template/map_national.html`：省 › 市 两级下拉 + 全国省份气泡 + 省份排行榜；`template/map.html` **原样保留**为城市级
+3. `fetch_snapshot.py` 加 `--all`（内地）、`--rebuild`（免调用、从 raw 缓存重建）；抓取循环改为**城市优先、按省排序**，跑完一个省就是一份可用快照
+4. 新建 `template/map_national.html`：省 › 市 两级下拉 + 内地省份气泡 + 省份排行榜；`template/map.html` **原样保留**为城市级
 5. `build_map.py` 加 `--scope city|nation`：city → `dist/city.html`，nation → `dist/nation.html`（`--pages` 时 nation 写 `docs/index.html`，city 写 `docs/city.html`）
-6. `smoke_test.mjs` 改为自动识别模板（页面有 `provSel` 即全国级），两种模板各跑一套断言
+6. `smoke_test.mjs` 改为自动识别模板（页面有 `provSel` 即内地级），两种模板各跑一套断言
 
 **踩坑**：
 
-- 全国视图每次 `renderMap` 都重 `fitBounds`，而 `zoomend` 又触发 `renderMap` → **用户一缩放就被弹回**。加 `nvFitted` 标志，视野只自动框一次
+- 内地视图每次 `renderMap` 都重 `fitBounds`，而 `zoomend` 又触发 `renderMap` → **用户一缩放就被弹回**。加 `nvFitted` 标志，视野只自动框一次
 - 省份气泡在京津、沪苏浙会重叠。按排名奇偶上下错开 7px，不完美但可读
-- 全国上万门店不铺点：全国层级只画省级气泡，进省才铺门店（否则 marker 数量直接把页面拖死）
+- 内地上万门店不铺点：内地层级只画省级气泡，进省才铺门店（否则 marker 数量直接把页面拖死）
 
-**工程取舍**：保留两套模板而不是合成一套。单城页 300 KB 打开即用，全国页 3–4 MB 多一层聚合——硬合并会两头不讨好。
+**工程取舍**：保留两套模板而不是合成一套。单城页 300 KB 打开即用，内地页 3–4 MB 多一层聚合——硬合并会两头不讨好。
 
 ---
 
@@ -140,7 +140,7 @@
 | `SKILL.md` | Skill 主文档：城市解析、执行流程、数据链路、话术红线 |
 | `scripts/mcp_client.py` | Streamable HTTP JSON-RPC 客户端（含 SSE 解析、混排 JSON 提取） |
 | `scripts/make_city.py` | 一键流水线：城市 → 抓取 → 缓存 → 渲染 |
-| `scripts/fetch_snapshot.py` | 城市 → 门店（增量合并，`--all` 全国 / `--rebuild` 免调用重建） |
+| `scripts/fetch_snapshot.py` | 城市 → 门店（增量合并，`--all` 内地 / `--rebuild` 免调用重建） |
 | `scripts/fetch_spu_detail.py` | 主题详情（内容 / 赠品 / 配图） |
 | `scripts/fetch_slots.py` | 日期与场次（增量合并） |
 | `scripts/extract_highlights.py` | 从购买须知切套餐 / 赠品 / 预约（只切分不改写） |
@@ -148,8 +148,8 @@
 | `scripts/build_map.py` | `data + 模板 → 页面`，`--scope city\|nation`，`--pages` 输出托管版 |
 | `scripts/smoke_test.mjs` | Node 桩件冒烟测试（自动识别模板） |
 | `template/map.html` | 城市版模板（单城市下拉） |
-| `template/map_national.html` | 全国版模板（省 › 市 两级下拉） |
-| `docs/index.html` | GitHub Pages 首页：全国版演示 |
+| `template/map_national.html` | 内地版模板（省 › 市 两级下拉） |
+| `docs/index.html` | GitHub Pages 首页：内地版演示 |
 | `docs/city.html` | GitHub Pages：城市版演示 |
 
 ---
