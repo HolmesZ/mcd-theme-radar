@@ -82,6 +82,12 @@
             border-bottom:1px solid #f3efe7;line-height:1.5}
   #slotHint b{color:#1d7a4d;font-weight:500}
 
+  #srcFoot{flex:0 0 auto;font-size:10px;line-height:1.55;color:var(--ink3);background:#fbf9f5;
+           border-top:1px solid var(--line);padding:6px 16px 7px}
+  #srcFoot b{color:var(--red);font-weight:600}
+  #srcFoot span{color:var(--ink3)}
+  #srcFoot .dim{color:#b3a99a;font-size:9.5px;margin-top:1px}
+
   #themes{flex:1 1 auto;overflow-y:auto;min-height:0}
   #themes::-webkit-scrollbar{width:6px}
   #themes::-webkit-scrollbar-thumb{background:#ddd6c9;border-radius:3px}
@@ -388,7 +394,7 @@
     <select id="citySel"></select>
   </div>
   <div class="meta">
-    <span class="snapchip">数据快照 <b id="snap">—</b></span>
+    <span class="snapchip">数据来源 <b>麦当劳 MCP</b> · 快照 <b id="snap">—</b></span>
     <button class="nearchip" id="nearBtn" title="定位到最近的门店">
       <span class="pin"></span><span id="nearText"></span><span class="go">›</span>
     </button>
@@ -462,6 +468,11 @@
         <button class="svdetail" id="svDetail">活动内容</button>
       </div>
       <div class="svlist" id="svList"></div>
+    </div>
+
+    <div id="srcFoot">
+      数据来源 <b>麦当劳 MCP</b>（<span>mcp.mcd.cn</span>）· 快照 <span id="snap2">—</span>
+      <div class="dim">门店 / 主题 / 场次均取自官方接口，余位与价格以麦当劳 App 为准</div>
     </div>
   </aside>
 
@@ -727,7 +738,7 @@ function storePopup(s){
     <div class="hd">举办主题 ${s.spus.length} 项</div>
     <div class="plist">${rows}</div>
     ${slotSection}
-    <div class="foot">场次快照 ${(SLOTS.generated_at || META.snapshot_at).replace('T', ' ').slice(0, 16)}，余位以官方渠道为准</div>
+    <div class="foot">门店与主题数据来自麦当劳 MCP · 场次快照 ${(SLOTS.generated_at || META.snapshot_at).replace('T', ' ').slice(0, 16)}，余位以官方渠道为准</div>
   </div>`;
 }
 
@@ -1425,6 +1436,7 @@ readHash();
 if (S.base !== 'amap'){ map.removeLayer(currentBase); currentBase = BASES[S.base]().addTo(map); }
 
 document.getElementById('snap').textContent = META.snapshot_at.replace('T', ' ').slice(0, 16);
+document.getElementById('snap2').textContent = META.snapshot_at.replace('T', ' ').slice(0, 16);
 buildProvSelect();
 buildCitySelect();
 document.getElementById('age').value = S.age || '';
