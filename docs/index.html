@@ -349,6 +349,9 @@
         box-shadow:0 6px 18px rgba(0,0,0,.38)}
   .pmark i{font-style:normal;background:var(--yellow);color:#5a3f00;border-radius:9px;
         padding:0 5px;font-size:.66em;font-weight:700;line-height:1.5}
+  /* 全省视图的城市气泡：改用琥珀色，和省级的红色区分层级 */
+  .pmark.cmark{background:#e07b1f;border-radius:16px}
+  .pmark.cmark i{background:#fff6e8;color:#7a4400}
 
   /* ---------- 全国视图：省份列表卡 ---------- */
   .pcard{display:flex;align-items:center;gap:11px;padding:11px 14px;
@@ -648,6 +651,26 @@ const PROV_STATS = (() => {
 })();
 const PROV_RANKED = () => Object.values(PROV_STATS).sort((a, b) => b.n - a.n);
 
+/* ---------- 城市聚合（全省视图用）----------
+ * 与省级气泡同一套逻辑：每个城市一个气泡，标注城市名 + 门店数，点一下进该市。
+ * spu 传 0 = 全部主题；传主题 id = 只统计举办该主题的门店。
+ */
+function cityStatsOf(provCode, spu){
+  const m = {};
+  DATA.forEach(s => {
+    if (PROV_OF[s.city] !== provCode) return;
+    if (spu && !s.spus.includes(spu)) return;
+    const r = m[s.city] || (m[s.city] = { code: s.city, n: 0, spus: new Set(), lat: 0, lng: 0 });
+    r.n++; s.spus.forEach(id => r.spus.add(id));
+    r.lat += s.lat; r.lng += s.lng;
+  });
+  Object.values(m).forEach(r => {
+    r.lat /= r.n; r.lng /= r.n;
+    r.n_spus = r.spus.size;
+  });
+  return Object.values(m).sort((a, b) => b.n - a.n);
+}
+
 /* ---------- 可约日期与场次 ---------- */
 const hasSlotData = () => !!(SLOTS && SLOTS.slots && Object.keys(SLOTS.slots).length);
 const mdOf = d => d ? (+d.slice(5, 7)) + '月' + (+d.slice(8, 10)) + '日' : '';
@@ -827,6 +850,14 @@ function renderMap(){
   let list = cityStores();
   if (S.spu) list = list.filter(s => s.spus.includes(S.spu));
 
+  /* 全省视图（还没钻到具体主题）：只画城市气泡，点一下才进市看门店 */
+  if (!S.city && !S.spu){
+    drawCities();
+    if (S.loc) drawMe();
+    else { S.nearest = null; document.getElementById('nearBtn').classList.remove('show'); }
+    return;
+  }
+
   if (map.getZoom() >= 11){ drawStores(list); gridCtx = null; }
   else gridCtx = drawGrid(list);
 
@@ -869,6 +900,34 @@ function drawProvinces(){
 function pickProv(code){
   S.prov = code; S.city = ''; S.spu = 0; S.sel = 0; S.store = null; S.svFit = false;
   buildProvSelect(); buildCitySelect(); afterScopeChange();
+}
+
+/* 全省视图：每个城市一个气泡，大小/深浅按门店数，点一下进该市 */
+function drawCities(){
+  const rows = cityStatsOf(S.prov, 0);
+  if (!rows.length) return;
+  const max = rows[0].n || 1;
+  rows.forEach((r, i) => {
+    const t = r.n / max;
+    const size = 11 + Math.round(Math.sqrt(t) * 8);      // 11–19px 字号
+    const name = CITY_NAME[r.code] || r.code;
+    const dy = (i % 2 ? -1 : 1) * 6;                     // 密集城市上下错开几像素
+    const icon = L.divIcon({
+      className: 'pmark-wrap',
+      html: `<div class="pmark cmark" style="font-size:${size}px;margin-top:${dy}px">`
+          + `<b>${esc(name)}</b><i>${r.n}</i></div>`,
+      iconSize: null, iconAnchor: [0, 0]
+    });
+    const mk = L.marker([r.lat, r.lng], { icon, keyboard: false, riseOnHover: true }).addTo(layer);
+    mk.on('click', () => pickCity(r.code));
+    mk.bindTooltip(`${name} · ${r.n} 家店 / ${r.n_spus} 个主题`, { direction: 'top', offset: [0, -12] });
+  });
+}
+
+/* 从全省视图进入某个市：这才铺门店点 */
+function pickCity(code){
+  S.city = code; S.spu = 0; S.sel = 0; S.store = null; S.svFit = false;
+  buildCitySelect(); afterScopeChange();
 }
 
 /* 门店列表里选中的那家：放大 + 红圈，让人一眼看到是哪个点 */
@@ -1055,14 +1114,16 @@ function buildCatSelect(ids){
   sel.onchange = () => { S.cat = sel.value; renderThemes(); syncHash(); };
 }
 
-/* 全国层级：筛选器 / 图例 / 看全市 只对门店视图有意义，先收起来 */
+/* 筛选器 / 图例 / 视野按钮：只对铺了门店点的层级有意义 */
 function scopeChrome(){
   const nation = !S.prov;
+  const cityLevel = !!S.city;
   document.querySelector('.filters').style.display = nation ? 'none' : 'block';
   const rst = document.getElementById('reset');
   if (rst) rst.style.display = nation ? 'none' : 'inline';
-  document.getElementById('legend').style.display = nation ? 'none' : 'block';
-  document.getElementById('fit').textContent = nation ? '看内地' : (S.city ? '看全市' : '看全省');
+  // 图例是「门店举办主题活动数」色阶，只有市级铺了门店点才需要
+  document.getElementById('legend').style.display = cityLevel ? 'block' : 'none';
+  document.getElementById('fit').textContent = nation ? '看内地' : (cityLevel ? '看全市' : '看全省');
 }
 
 /* ---------- 全国视图：省份排行列表 ---------- */
@@ -1143,6 +1204,10 @@ function renderThemes(){
     hint.innerHTML = `${scopeLabel()}场次数据已接入：<b>${esc(names)}</b>（其余主题暂无场次数据）`;
   } else {
     hint.innerHTML = `${scopeLabel()}场次数据未接入，运行 <code>fetch_slots.py</code> 后重新编译`;
+  }
+  // 全省视图地图上是城市气泡，提示一句怎么进市
+  if (S.prov && !S.city){
+    hint.innerHTML += `<br>地图上是各城市的门店数，<b>点城市气泡</b>或用上方城市下拉进市看具体门店`;
   }
 
   if (!list.length){

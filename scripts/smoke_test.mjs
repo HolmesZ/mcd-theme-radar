@@ -106,7 +106,7 @@ const isNation = /id="provSel"/.test(html);
 console.log(`模板：${isNation ? '全国级（省 › 市）' : '城市级（单城市）'}\n`);
 
 const suffix = isNation
-  ? '\n;globalThis.__T = { DATA, META, SLOTS, S, SPU, PROVS, PROV_OF, cityStores, renderThemes, renderStoreView, renderDetail, buildProvSelect, buildCitySelect };'
+  ? '\n;globalThis.__T = { DATA, META, SLOTS, S, SPU, PROVS, PROV_OF, CITY_NAME, cityStatsOf, cityStores, renderThemes, renderStoreView, renderDetail, buildProvSelect, buildCitySelect };'
   : '\n;globalThis.__T = { DATA, META, SLOTS, S, SPU, cityStores, renderThemes, renderStoreView, renderDetail };';
 
 try {
@@ -118,7 +118,7 @@ try {
   process.exit(1);
 }
 const T = globalThis.__T;
-const { DATA, META, SLOTS, S, SPU, cityStores, renderThemes, renderStoreView, renderDetail } = T;
+const { DATA, META, SLOTS, S, SPU, cityStores, renderThemes, renderStoreView, renderDetail, cityStatsOf } = T;
 
 /* ---------- 断言 ---------- */
 const cityCodes = [...new Set(DATA.map(s => s.city))];
@@ -187,6 +187,20 @@ if (!isNation) {
   const provOpts = (E('provSel').innerHTML.match(/<option/g) || []).length;
   check('省下拉 = 内地 + 全部省', provOpts === PROVS.length + 1, `${provOpts} 项`);
   check('全国层级禁用城市下拉', E('citySel').disabled === true);
+
+  // 1.5 城市聚合：每个省的城市气泡数与门店数对得上
+  if (cityStatsOf){
+    let aggOK = 0;
+    for (const p of PROVS){
+      const rows = cityStatsOf(p.code, 0);
+      const sum = rows.reduce((a, r) => a + r.n, 0);
+      const expect = DATA.filter(s => PROV_OF[s.city] === p.code).length;
+      const nCity = new Set(DATA.filter(s => PROV_OF[s.city] === p.code).map(s => s.city)).size;
+      if (sum === expect && rows.length === nCity) aggOK++;
+      else console.error(`   ${p.name}: 气泡 ${rows.length} 城（应 ${nCity}）/ 门店合计 ${sum}（应 ${expect}）`);
+    }
+    check('城市气泡聚合数与门店数一致', aggOK === PROVS.length, `${aggOK}/${PROVS.length} 省`);
+  }
 
   // 2. 每个省：全省主题卡 + 城市下拉按省过滤
   let provOK = 0, provCityOptOK = 0;
